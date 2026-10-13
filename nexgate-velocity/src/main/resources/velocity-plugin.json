@@ -1,0 +1,9 @@
+{
+  "id": "nexgate",
+  "name": "NexGate",
+  "version": "1.0.0-SNAPSHOT",
+  "description": "Original authentication plugin for Velocity with Paper backends",
+  "authors": ["NexGate"],
+  "main": "com.nexgate.velocity.NexGateVelocityPlugin"
+}
+```

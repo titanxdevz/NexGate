@@ -1,0 +1,9 @@
+name: NexGate
+version: 1.0.0-SNAPSHOT
+main: com.nexgate.paper.NexGatePaperPlugin
+api-version: 1.21
+description: NexGate Paper backend companion for defense-in-depth authentication
+author: NexGate
+depend: []
+softdepend: []
+```
