@@ -1,7 +1,22 @@
-# NexGate Paper Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#           NexGate Paper Companion Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Shared secret with Velocity proxy - MUST match exactly
+# Shared secret with Velocity proxy - MUST match velocity-config.json exactly!
 hmac-secret: ""
 
-# Gate all actions for unauthenticated players (defense in depth)
+# Defense-in-depth: Gate all player interactions until authenticated at proxy
 strict-gating: true
+
+# Apply visual and movement restrictions while unauthenticated
+apply-blindness: true
+apply-slowness: true
+
+# Hide unauthenticated players from other online players
+hide-unauthenticated-players: true
+
+# Personalization: Allow chat formatting based on player's chosen color and style
+allow-chat-color-formatting: true
+
+# Chat display format template
+chat-format: "<gray><player></gray> <dark_gray>»</dark_gray> <message>"

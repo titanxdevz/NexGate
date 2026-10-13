@@ -86,6 +86,13 @@ public class RateLimiter {
         }
     }
 
-    private record RateLimitBucket(int attempts, long firstAttempt) {
+    private static class RateLimitBucket {
+        final int attempts;
+        final long firstAttempt;
+
+        RateLimitBucket(int attempts, long firstAttempt) {
+            this.attempts = attempts;
+            this.firstAttempt = firstAttempt;
+        }
     }
 }

@@ -85,7 +85,23 @@ public class PasswordValidator {
         return ValidationResult.ok();
     }
 
-    public record ValidationResult(boolean valid, String message) {
+    public static class ValidationResult {
+        private final boolean valid;
+        private final String message;
+
+        public ValidationResult(boolean valid, String message) {
+            this.valid = valid;
+            this.message = message;
+        }
+
+        public boolean valid() {
+            return valid;
+        }
+
+        public String message() {
+            return message;
+        }
+
         public static ValidationResult ok() {
             return new ValidationResult(true, null);
         }

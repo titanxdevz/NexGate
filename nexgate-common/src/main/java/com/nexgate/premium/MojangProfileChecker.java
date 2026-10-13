@@ -97,12 +97,41 @@ public class MojangProfileChecker {
         return UUID.fromString(formatted);
     }
 
-    public record MojangProfile(boolean exists, String exactName, UUID uuid) {
+    public static class MojangProfile {
+        private final boolean exists;
+        private final String exactName;
+        private final UUID uuid;
+
+        public MojangProfile(boolean exists, String exactName, UUID uuid) {
+            this.exists = exists;
+            this.exactName = exactName;
+            this.uuid = uuid;
+        }
+
+        public boolean exists() {
+            return exists;
+        }
+
+        public String exactName() {
+            return exactName;
+        }
+
+        public UUID uuid() {
+            return uuid;
+        }
+
         public static MojangProfile nonExistent(String name) {
             return new MojangProfile(false, name, null);
         }
     }
 
-    private record CacheEntry(MojangProfile profile, long timestamp) {
+    private static class CacheEntry {
+        final MojangProfile profile;
+        final long timestamp;
+
+        CacheEntry(MojangProfile profile, long timestamp) {
+            this.profile = profile;
+            this.timestamp = timestamp;
+        }
     }
 }

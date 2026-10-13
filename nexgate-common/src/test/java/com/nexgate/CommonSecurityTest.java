@@ -135,4 +135,74 @@ public class CommonSecurityTest {
         assertFalse(limiter.isLockedOut(ip));
         assertTrue(limiter.tryAcquire(ip));
     }
+
+    @Test
+    public void testDatabaseOperationsSQLite() throws Exception {
+        java.io.File tempDb = java.io.File.createTempFile("nexgate-test-", ".db");
+        tempDb.deleteOnExit();
+
+        com.nexgate.db.DatabaseManager db = new com.nexgate.db.DatabaseManager(
+                "sqlite", "localhost", 3306, "test", "test", "test", tempDb
+        );
+
+        // Wait brief moment for tables to initialize async
+        Thread.sleep(300);
+
+        UUID uuid = UUID.randomUUID();
+        String passHash = HashingUtils.hashPassword("Secret123!");
+        UserAuth user = UserAuth.builder()
+                .username("TestPlayer")
+                .uuid(uuid)
+                .passwordHash(passHash)
+                .ip("127.0.0.1")
+                .lastIp("127.0.0.1")
+                .messageColor("SUNSET")
+                .messageStyle("BOLD")
+                .premium(false)
+                .build();
+
+        // 1. Register user
+        boolean registered = db.registerUser(user).get();
+        assertTrue(registered);
+
+        // 2. Fetch user case-insensitively
+        var fetched = db.getUser("testplayer").get();
+        assertTrue(fetched.isPresent());
+        assertEquals("TestPlayer", fetched.get().getUsername());
+        assertEquals("SUNSET", fetched.get().getMessageColor());
+        assertEquals("BOLD", fetched.get().getMessageStyle());
+
+        // 3. Count by IP
+        int count = db.countAccountsByIp("127.0.0.1").get();
+        assertEquals(1, count);
+
+        // 4. Update message color
+        db.updateMessageColor("testplayer", "AQUA", "ITALIC").get();
+        var updated = db.getUser("testplayer").get();
+        assertTrue(updated.isPresent());
+        assertEquals("AQUA", updated.get().getMessageColor());
+        assertEquals("ITALIC", updated.get().getMessageStyle());
+
+        // 5. Save & get session
+        SessionRecord session = new SessionRecord(uuid, "testplayer", "session-token-xyz", "127.0.0.1",
+                System.currentTimeMillis(), System.currentTimeMillis() + 60000);
+        db.saveSession(session).get();
+
+        var sessFetched = db.getSession(uuid).get();
+        assertTrue(sessFetched.isPresent());
+        assertEquals("session-token-xyz", sessFetched.get().getSessionToken());
+
+        // 6. Invalidate session
+        db.invalidateSession(uuid).get();
+        var sessAfter = db.getSession(uuid).get();
+        assertTrue(sessAfter.isEmpty());
+
+        // 7. Unregister user
+        boolean unregistered = db.unregisterUser("testplayer").get();
+        assertTrue(unregistered);
+        var finalCheck = db.getUser("testplayer").get();
+        assertTrue(finalCheck.isEmpty());
+
+        db.close();
+    }
 }

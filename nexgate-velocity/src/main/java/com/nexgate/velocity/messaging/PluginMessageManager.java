@@ -3,24 +3,25 @@ package com.nexgate.velocity.messaging;
 import com.google.common.io.ByteArrayDataInput;
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
-import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
-import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
+import com.nexgate.crypto.HashingUtils;
 import com.nexgate.crypto.HmacUtils;
 import com.nexgate.message.MessageChannel;
 import com.nexgate.message.MessageType;
 import com.nexgate.velocity.auth.AuthManager;
 import com.nexgate.velocity.config.ConfigManager;
+import com.velocitypowered.api.event.connection.PluginMessageEvent;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
+import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
 import org.slf4j.Logger;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Manages plugin messaging between Velocity and Paper backends.
+ * Manages plugin messaging between Velocity proxy and Paper backend companions.
  */
 public class PluginMessageManager {
     private final ProxyServer server;
@@ -28,72 +29,94 @@ public class PluginMessageManager {
     private final ConfigManager configManager;
     private final AuthManager authManager;
     private final ChannelIdentifier channel;
-    
-    private static final long MAX_AGE_MILLIS = 30_000L;
-    
+
     public PluginMessageManager(ProxyServer server, Logger logger, ConfigManager configManager,
-                                 AuthManager authManager) {
+                                AuthManager authManager) {
         this.server = server;
         this.logger = logger;
         this.configManager = configManager;
         this.authManager = authManager;
         this.channel = MinecraftChannelIdentifier.from(MessageChannel.MAIN_CHANNEL);
     }
-    
-    public void register() {
+
+    public void register(Object pluginInstance) {
         server.getChannelRegistrar().register(channel);
-        server.getEventManager().register(this, new MessageListener());
+        server.getEventManager().register(pluginInstance, new MessageListener());
         logger.info("Registered plugin message channel: {}", channel.getId());
     }
-    
+
     public void unregister() {
         server.getChannelRegistrar().unregister(channel);
     }
-    
-    public void sendPerformLogin(RegisteredServer server, String playerName, UUID verifiedPremiumUuid) {
+
+    /**
+     * Sends signed HMAC perform.login message to the backend server with replay protection.
+     */
+    public void sendPerformLogin(RegisteredServer targetServer, String playerName, UUID uuid,
+                                 String messageColor, String messageStyle) {
+        if (targetServer == null) return;
+
         long timestamp = System.currentTimeMillis();
-        String uuidStr = verifiedPremiumUuid == null ? "" : verifiedPremiumUuid.toString();
-        String hmac = HmacUtils.computePerformLoginHmac(configManager.getHmacSecret(), playerName, timestamp, uuidStr);
-        
+        String nonce = HashingUtils.generateSecureToken(16);
+        String uuidStr = uuid == null ? "" : uuid.toString();
+        String color = messageColor == null ? "WHITE" : messageColor;
+        String style = messageStyle == null ? "DEFAULT" : messageStyle;
+
+        String hmac = HmacUtils.computePerformLoginHmac(
+                configManager.getHmacSecret(), playerName, nonce, timestamp, uuidStr, color, style
+        );
+
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF(MessageType.PERFORM_LOGIN.getId());
         out.writeUTF(playerName);
+        out.writeUTF(nonce);
         out.writeLong(timestamp);
         out.writeUTF(uuidStr);
+        out.writeUTF(color);
+        out.writeUTF(style);
         out.writeUTF(hmac);
-        
-        server.sendPluginMessage(channel, out.toByteArray());
-        logger.debug("Sent perform.login for {} to {}", playerName, server.getServerInfo().getName());
+
+        targetServer.sendPluginMessage(channel, out.toByteArray());
+        logger.debug("Sent signed perform.login for {} to server {}", playerName, targetServer.getServerInfo().getName());
     }
-    
-    public void sendLoginState(RegisteredServer server, String playerName) {
+
+    /**
+     * Broadcasts color & style settings update to a server.
+     */
+    public void sendSyncSettings(RegisteredServer targetServer, String playerName, String messageColor, String messageStyle) {
+        if (targetServer == null) return;
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
-        out.writeUTF(MessageType.LOGIN.getId());
+        out.writeUTF(MessageType.SYNC_SETTINGS.getId());
         out.writeUTF(playerName);
-        server.sendPluginMessage(channel, out.toByteArray());
+        out.writeUTF(messageColor != null ? messageColor : "WHITE");
+        out.writeUTF(messageStyle != null ? messageStyle : "DEFAULT");
+        targetServer.sendPluginMessage(channel, out.toByteArray());
     }
-    
-    public void sendLogoutState(RegisteredServer server, String playerName) {
+
+    /**
+     * Broadcasts logout state.
+     */
+    public void sendLogoutState(RegisteredServer targetServer, String playerName) {
+        if (targetServer == null) return;
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF(MessageType.LOGOUT.getId());
         out.writeUTF(playerName);
-        server.sendPluginMessage(channel, out.toByteArray());
+        targetServer.sendPluginMessage(channel, out.toByteArray());
     }
-    
+
     public class MessageListener {
-        // Handle incoming messages
         @com.velocitypowered.api.event.Subscribe
-        public void onPluginMessage(com.velocitypowered.api.event.connection.PluginMessageEvent event) {
+        public void onPluginMessage(PluginMessageEvent event) {
             if (!event.getIdentifier().equals(channel)) {
                 return;
             }
-            
-            event.setResult(com.velocitypowered.api.event.connection.PluginMessageEvent.ForwardResult.handled());
-            
+
+            event.setResult(PluginMessageEvent.ForwardResult.handled());
+
             if (!(event.getSource() instanceof RegisteredServer)) {
                 return;
             }
-            
+
             ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
             try {
                 String typeId = in.readUTF();
@@ -101,17 +124,15 @@ public class PluginMessageManager {
                 if (typeOpt.isEmpty()) {
                     return;
                 }
-                
+
                 MessageType type = typeOpt.get();
-                if (type == MessageType.PROXY_STARTED) {
-                    // Backend says it's ready - could sync state if needed
-                    logger.debug("Received proxy.started from backend");
-                } else if (type == MessageType.PERFORM_LOGIN_ACK) {
-                    // Ack from backend
-                    logger.debug("Received perform.login.ack");
+                if (type == MessageType.PERFORM_LOGIN_ACK) {
+                    logger.debug("Received perform.login.ack from backend");
+                } else if (type == MessageType.PROXY_STARTED) {
+                    logger.debug("Received proxy.started announcement from backend");
                 }
             } catch (Exception e) {
-                logger.warn("Failed to parse plugin message", e);
+                logger.warn("Failed to parse plugin message from backend", e);
             }
         }
     }
