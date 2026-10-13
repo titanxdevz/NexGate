@@ -1,0 +1,65 @@
+name: "🐛 Bug Report"
+description: File a bug report for NexGate
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! Please verify you are using the latest version of NexGate before submitting.
+
+  - type: input
+    id: version
+    attributes:
+      label: NexGate Version
+      description: The exact version you are running (run `/nexgate info`).
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Server Environment
+      description: Velocity version, Paper version, and Java version.
+      placeholder: "e.g. Velocity 3.4.0-SNAPSHOT (build 450), Paper 1.21.1, Java 21"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database Backend
+      description: Which database backend are you using?
+      options:
+        - "SQLite (nexgate.db)"
+        - "MySQL / MariaDB"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Connect to Velocity proxy with account 'X'
+        2. Run command '...'
+        3. See error '...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs & Stack Traces
+      description: Please paste any console logs or errors (wrap in code blocks).
+      render: shell

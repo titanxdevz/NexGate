@@ -24,6 +24,7 @@ tasks.test {
 }
 
 tasks.shadowJar {
+    archiveBaseName.set("NexGate-Paper")
     archiveClassifier.set("")
     // relocate("com.zaxxer.hikari", "com.nexgate.libs.hikari")
     // relocate("de.mkammerer.argon2", "com.nexgate.libs.argon2")
