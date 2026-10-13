@@ -6,7 +6,7 @@ dependencies {
     implementation(project(":nexgate-common"))
     compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
     annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    implementation("de.mkammerer:argon2-jvm:2.11")
+    implementation("de.mkammerer:argon2-jvm:2.12")
     implementation("com.zaxxer:HikariCP:5.1.0")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.xerial:sqlite-jdbc:3.47.0.0")
