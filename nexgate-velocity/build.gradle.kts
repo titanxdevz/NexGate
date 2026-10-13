@@ -4,8 +4,8 @@ plugins {
 
 dependencies {
     implementation(project(":nexgate-common"))
-    compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+    compileOnly("com.velocitypowered:velocity-api:4.2.1-SNAPSHOT")
+    annotationProcessor("com.velocitypowered:velocity-api:4.2.1-SNAPSHOT")
     implementation("de.mkammerer:argon2-jvm:2.11")
     implementation("com.zaxxer:HikariCP:5.1.0")
     implementation("com.google.code.gson:gson:2.11.0")
