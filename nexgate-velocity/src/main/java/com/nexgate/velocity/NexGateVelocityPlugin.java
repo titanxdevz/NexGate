@@ -61,4 +61,3 @@ public class NexGateVelocityPlugin {
         return java.nio.file.Paths.get("plugins/nexgate");
     }
 }
-```

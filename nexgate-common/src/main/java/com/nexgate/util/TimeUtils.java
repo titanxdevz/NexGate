@@ -15,4 +15,3 @@ public class TimeUtils {
         return Math.abs(now() - timestamp) > maxAgeMillis;
     }
 }
-```

@@ -72,4 +72,3 @@ public class ConnectionListener {
         authManager.logout(player);
     }
 }
-```

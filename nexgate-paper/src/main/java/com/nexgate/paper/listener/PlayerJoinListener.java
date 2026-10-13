@@ -38,4 +38,3 @@ public class PlayerJoinListener implements Listener {
         authManager.deauthenticate(event.getPlayer());
     }
 }
-```

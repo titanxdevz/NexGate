@@ -41,4 +41,3 @@ public class NexGatePaperPlugin extends JavaPlugin {
         }
     }
 }
-```

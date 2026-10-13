@@ -5,4 +5,3 @@ hmac-secret: ""
 
 # Gate all actions for unauthenticated players (defense in depth)
 strict-gating: true
-```

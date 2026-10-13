@@ -24,4 +24,4 @@ Implement original multi-module Gradle project:
 - `nexgate-paper` - backend companion
 
 All code original. Dependencies pinned with versions/licenses.
-```
+``` 

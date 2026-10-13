@@ -6,4 +6,3 @@ description: NexGate Paper backend companion for defense-in-depth authentication
 author: NexGate
 depend: []
 softdepend: []
-```

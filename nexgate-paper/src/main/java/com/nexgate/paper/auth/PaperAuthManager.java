@@ -57,4 +57,3 @@ public class PaperAuthManager {
         return true;
     }
 }
-```

@@ -10,4 +10,3 @@ public class MessageChannel {
     private MessageChannel() {
     }
 }
-```

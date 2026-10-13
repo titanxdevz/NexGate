@@ -27,4 +27,3 @@ public class PaperConfigManager {
         return hmacSecret;
     }
 }
-```

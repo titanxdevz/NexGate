@@ -139,4 +139,3 @@ public class ConfigManager {
         public String password = "password";
     }
 }
-```

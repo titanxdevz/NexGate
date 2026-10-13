@@ -86,4 +86,3 @@ public class AuthManager {
     public record LoginAttempt(int count, long lastAttempt) {
     }
 }
-```
