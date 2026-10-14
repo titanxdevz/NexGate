@@ -26,12 +26,13 @@ public class UserAuth {
     private final String totpRecoveryCodes;
     private final boolean locked;
     private final String lockReason;
+    private final boolean pendingPremium;
 
     public UserAuth(long id, String username, String usernameLower, UUID uuid, String passwordHash,
                     String ip, long regDate, long lastLogin, String lastIp, boolean premium,
                     UUID premiumUuid, AccountType accountType, String messageColor, String messageStyle,
                     String totpSecret, boolean totpEnabled, String totpRecoveryCodes,
-                    boolean locked, String lockReason) {
+                    boolean locked, String lockReason, boolean pendingPremium) {
         this.id = id;
         this.username = Objects.requireNonNull(username, "username cannot be null");
         this.usernameLower = usernameLower != null ? usernameLower : username.toLowerCase();
@@ -51,16 +52,28 @@ public class UserAuth {
         this.totpRecoveryCodes = totpRecoveryCodes;
         this.locked = locked;
         this.lockReason = lockReason;
+        this.pendingPremium = pendingPremium;
     }
 
     // Convenience constructor for backwards compatibility
+    public UserAuth(long id, String username, String usernameLower, UUID uuid, String passwordHash,
+                    String ip, long regDate, long lastLogin, String lastIp, boolean premium,
+                    UUID premiumUuid, AccountType accountType, String messageColor, String messageStyle,
+                    String totpSecret, boolean totpEnabled, String totpRecoveryCodes,
+                    boolean locked, String lockReason) {
+        this(id, username, usernameLower, uuid, passwordHash, ip, regDate, lastLogin, lastIp,
+                premium, premiumUuid, accountType, messageColor, messageStyle,
+                totpSecret, totpEnabled, totpRecoveryCodes, locked, lockReason, false);
+    }
+
+    // Convenience constructor for legacy callers
     public UserAuth(long id, String username, String usernameLower, UUID uuid, String passwordHash,
                     String ip, long regDate, long lastLogin, String lastIp, boolean premium,
                     UUID premiumUuid, String messageColor, String messageStyle,
                     String totpSecret, boolean totpEnabled) {
         this(id, username, usernameLower, uuid, passwordHash, ip, regDate, lastLogin, lastIp,
                 premium, premiumUuid, premium ? AccountType.PREMIUM : AccountType.OFFLINE,
-                messageColor, messageStyle, totpSecret, totpEnabled, null, false, null);
+                messageColor, messageStyle, totpSecret, totpEnabled, null, false, null, false);
     }
 
     public long getId() {
@@ -139,6 +152,10 @@ public class UserAuth {
         return lockReason;
     }
 
+    public boolean isPendingPremium() {
+        return pendingPremium;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -163,6 +180,7 @@ public class UserAuth {
         private String totpRecoveryCodes;
         private boolean locked;
         private String lockReason;
+        private boolean pendingPremium;
 
         public Builder id(long id) {
             this.id = id;
@@ -265,11 +283,16 @@ public class UserAuth {
             return this;
         }
 
+        public Builder pendingPremium(boolean pendingPremium) {
+            this.pendingPremium = pendingPremium;
+            return this;
+        }
+
         public UserAuth build() {
             return new UserAuth(id, username, usernameLower, uuid, passwordHash, ip,
                     regDate, lastLogin, lastIp, premium, premiumUuid, accountType,
                     messageColor, messageStyle, totpSecret, totpEnabled, totpRecoveryCodes,
-                    locked, lockReason);
+                    locked, lockReason, pendingPremium);
         }
     }
 }
