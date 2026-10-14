@@ -103,10 +103,11 @@ public class AuthManager {
         );
         authenticatedSessions.put(uuid, session);
 
-        // Cancel pending auth UI (bossbar, timers, action bar)
+        // Cancel pending auth UI (bossbar, timers, action bar, title)
         stopAuthFlow(player);
         stopTotpFlow(player);
         player.sendActionBar(Component.empty());
+        player.clearTitle();
 
         // Play success chime
         if (configManager.isPlaySounds()) {
@@ -115,10 +116,10 @@ public class AuthManager {
 
         // Show welcome title
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#00C9FF:#92FE9D>Authenticated</gradient></bold>");
-            Component subtitle = MINI_MESSAGE.deserialize("<gray>Welcome, <white>" + player.getUsername() + "</white>!</gray>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
+            Component subtitle = MINI_MESSAGE.deserialize("<green>✔ Authenticated! Welcome, <white>" + player.getUsername() + "</white></green>");
             player.showTitle(Title.title(mainTitle, subtitle,
-                    Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(2), Duration.ofMillis(500))));
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(300))));
         }
 
         logger.info("Player {} ({}) authenticated successfully (premium={})", player.getUsername(), uuid, premium);
@@ -159,9 +160,9 @@ public class AuthManager {
 
         if (configManager.isShowBossBar()) {
             bossBar = BossBar.bossBar(
-                    MINI_MESSAGE.deserialize("<gradient:#00C9FF:#92FE9D>🔐 " + (isRegistered ? "Please /login" : "Please /register") + "</gradient> <gray>(" + maxSeconds + "s)</gray>"),
+                    MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>You have <gold><bold>" + maxSeconds + "</bold></gold> seconds left to log in.</white>"),
                     1.0f,
-                    BossBar.Color.GREEN,
+                    BossBar.Color.YELLOW,
                     BossBar.Overlay.PROGRESS
             );
             player.showBossBar(bossBar);
@@ -191,7 +192,7 @@ public class AuthManager {
 
         if (configManager.isShowBossBar()) {
             bossBar = BossBar.bossBar(
-                    MINI_MESSAGE.deserialize("<gradient:#FF512F:#DD2476>🛡 2FA Required: /2fa verify</gradient> <gray>(" + maxSeconds + "s)</gray>"),
+                    MINI_MESSAGE.deserialize("<red><bold>NEXGATE</bold></red> <white>→</white> <white>You have <gold><bold>" + maxSeconds + "</bold></gold> seconds left to enter 2FA.</white>"),
                     1.0f,
                     BossBar.Color.RED,
                     BossBar.Overlay.PROGRESS
@@ -219,38 +220,27 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:ui.button.click"), Sound.Source.MASTER, 0.8f, 1.2f));
         }
 
-        Component card;
+        Component msg;
         if (isRegistered) {
-            card = MINI_MESSAGE.deserialize(
-                    "\n" +
-                    "<dark_gray>  ┌─ <gradient:#00C9FF:#92FE9D><bold>NEXGATE SECURITY</bold></gradient> <dark_gray>──────────────────────────┐</dark_gray>\n" +
-                    "<dark_gray>  │</dark_gray>  <white>Welcome back, <aqua><bold>" + player.getUsername() + "</bold></aqua>!</white>\n" +
-                    "<dark_gray>  │</dark_gray>  <gray>Please authenticate to access the network.</gray>\n" +
-                    "<dark_gray>  │</dark_gray>\n" +
-                    "<dark_gray>  │</dark_gray>  <click:suggest_command:'/login '><hover:show_text:'<gradient:#00C9FF:#92FE9D>Click to suggest /login</gradient>'><gradient:#00C9FF:#92FE9D><bold>[ 🔑 CLICK TO LOGIN ]</bold></gradient></hover></click> <dark_gray>or <yellow>/login &lt;pass&gt;</yellow></dark_gray>\n" +
-                    "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
+            int maxAttempts = configManager.getRateLimitAccountMax();
+            msg = MINI_MESSAGE.deserialize(
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>Please use <gold><click:suggest_command:'/login '><hover:show_text:'<yellow>Click to suggest /login'>/login \\<password></hover></click></gold>, you have <gold>" + maxAttempts + "</gold> attempts.</white>"
             );
         } else {
-            card = MINI_MESSAGE.deserialize(
-                    "\n" +
-                    "<dark_gray>  ┌─ <gradient:#00C9FF:#92FE9D><bold>NEXGATE SECURITY</bold></gradient> <dark_gray>──────────────────────────┐</dark_gray>\n" +
-                    "<dark_gray>  │</dark_gray>  <white>Welcome to the server, <aqua><bold>" + player.getUsername() + "</bold></aqua>!</white>\n" +
-                    "<dark_gray>  │</dark_gray>  <gray>Protect your account by creating a secure password.</gray>\n" +
-                    "<dark_gray>  │</dark_gray>\n" +
-                    "<dark_gray>  │</dark_gray>  <click:suggest_command:'/register '><hover:show_text:'<gradient:#00C9FF:#92FE9D>Click to suggest /register</gradient>'><gradient:#00C9FF:#92FE9D><bold>[ 📝 CLICK TO REGISTER ]</bold></gradient></hover></click> <dark_gray>or <yellow>/register &lt;pass&gt; &lt;confirm&gt;</yellow></dark_gray>\n" +
-                    "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
+            msg = MINI_MESSAGE.deserialize(
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>Please, register using <gold><click:suggest_command:'/register '><hover:show_text:'<yellow>Click to suggest /register'>/register \\<password> \\<repeat password></hover></click></gold></white>"
             );
         }
 
-        player.sendMessage(card);
+        player.sendMessage(msg);
 
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#00C9FF:#92FE9D>N E X G A T E</gradient></bold>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
             Component subTitle = MINI_MESSAGE.deserialize(isRegistered ?
-                    "<gray>Please <aqua><bold>/login &lt;password&gt;</bold></aqua> to proceed</gray>" :
-                    "<gray>Please <aqua><bold>/register &lt;pass&gt; &lt;confirm&gt;</bold></aqua></gray>");
+                    "<white>Use <gold>/login \\<password></gold> to login</white>" :
+                    "<white>Please use <gold>/register \\<password></gold></white>");
             player.showTitle(Title.title(mainTitle, subTitle,
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(10), Duration.ofMillis(200))));
         }
     }
 
@@ -261,24 +251,17 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:block.note_block.bell"), Sound.Source.MASTER, 1.0f, 1.0f));
         }
 
-        Component card = MINI_MESSAGE.deserialize(
-                "\n" +
-                "<dark_gray>  ┌─ <gradient:#FF512F:#DD2476><bold>TWO-FACTOR VERIFICATION</bold></gradient> <dark_gray>────────────────────┐</dark_gray>\n" +
-                "<dark_gray>  │</dark_gray>  <white>Security Check: <gold><bold>2FA is enabled</bold></gold></white>\n" +
-                "<dark_gray>  │</dark_gray>  <gray>Check your authenticator app for the 6-digit code.</gray>\n" +
-                "<dark_gray>  │</dark_gray>\n" +
-                "<dark_gray>  │</dark_gray>  <click:suggest_command:'/2fa verify '><hover:show_text:'<gradient:#FF512F:#DD2476>Click to enter TOTP code</gradient>'><gradient:#FF512F:#DD2476><bold>[ 🛡 CLICK TO VERIFY ]</bold></gradient></hover></click> <dark_gray>or <yellow>/2fa verify &lt;code&gt;</yellow></dark_gray>\n" +
-                "<dark_gray>  │</dark_gray>  <dark_gray>Lost access? Run <yellow>/2fa recovery &lt;key&gt;</yellow></dark_gray>\n" +
-                "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
+        Component msg = MINI_MESSAGE.deserialize(
+                "<red><bold>NEXGATE</bold></red> <white>→</white> <white>Please enter your 2FA code: <gold><click:suggest_command:'/2fa verify '><hover:show_text:'<yellow>Click to suggest /2fa verify'>/2fa verify \\<code></hover></click></gold></white>"
         );
 
-        player.sendMessage(card);
+        player.sendMessage(msg);
 
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#FF512F:#DD2476>2FA Verification</gradient></bold>");
-            Component subTitle = MINI_MESSAGE.deserialize("<gray>Enter code with <gold><bold>/2fa verify &lt;code&gt;</bold></gold></gray>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<red><bold>NEXGATE</bold></red>");
+            Component subTitle = MINI_MESSAGE.deserialize("<white>Use <gold>/2fa verify \\<code></gold> to verify</white>");
             player.showTitle(Title.title(mainTitle, subTitle,
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(10), Duration.ofMillis(200))));
         }
     }
 
@@ -304,26 +287,24 @@ public class AuthManager {
         if (pending.bossBar != null) {
             float progress = Math.max(0.0f, Math.min(1.0f, (float) remaining / (float) pending.maxSeconds));
             pending.bossBar.progress(progress);
-
-            BossBar.Color color = BossBar.Color.GREEN;
-            if (remaining <= 15) {
-                color = BossBar.Color.RED;
-            } else if (remaining <= 30) {
-                color = BossBar.Color.YELLOW;
-            }
-            pending.bossBar.color(color);
-
-            String promptText = pending.isRegistered ? "Please /login" : "Please /register";
+            pending.bossBar.color(remaining <= 15 ? BossBar.Color.RED : BossBar.Color.YELLOW);
             pending.bossBar.name(MINI_MESSAGE.deserialize(
-                    "<gradient:#00C9FF:#92FE9D>🔐 " + promptText + "</gradient> <gray>(" + remaining + "s remaining)</gray>"
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>You have <gold><bold>" + remaining + "</bold></gold> seconds left to log in.</white>"
             ));
         }
 
-        player.sendActionBar(MINI_MESSAGE.deserialize(
-                "<red>⚠ You must authenticate to interact! <gray>(" + remaining + "s left)</gray></red>"
-        ));
+        // Keep center title active on screen
+        if (configManager.isShowTitle() && elapsedSeconds % 4 == 0) {
+            Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
+            Component subTitle = MINI_MESSAGE.deserialize(pending.isRegistered ?
+                    "<white>Use <gold>/login \\<password></gold> to login</white>" :
+                    "<white>Please use <gold>/register \\<password></gold></white>");
+            player.showTitle(Title.title(mainTitle, subTitle,
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(5), Duration.ofMillis(200))));
+        }
 
-        if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
+        // Periodically resend chat prompt
+        if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
             sendAuthPrompt(player, pending.isRegistered);
         }
     }
@@ -351,15 +332,18 @@ public class AuthManager {
             float progress = Math.max(0.0f, Math.min(1.0f, (float) remaining / (float) pending.maxSeconds));
             pending.bossBar.progress(progress);
             pending.bossBar.name(MINI_MESSAGE.deserialize(
-                    "<gradient:#FF512F:#DD2476>🛡 Enter 2FA: /2fa verify</gradient> <gray>(" + remaining + "s remaining)</gray>"
+                    "<red><bold>NEXGATE</bold></red> <white>→</white> <white>You have <gold><bold>" + remaining + "</bold></gold> seconds left to enter 2FA.</white>"
             ));
         }
 
-        player.sendActionBar(MINI_MESSAGE.deserialize(
-                "<red>⚠ 2FA code required! <gray>(" + remaining + "s left)</gray></red>"
-        ));
+        if (configManager.isShowTitle() && elapsedSeconds % 4 == 0) {
+            Component mainTitle = MINI_MESSAGE.deserialize("<red><bold>NEXGATE</bold></red>");
+            Component subTitle = MINI_MESSAGE.deserialize("<white>Use <gold>/2fa verify \\<code></gold> to verify</white>");
+            player.showTitle(Title.title(mainTitle, subTitle,
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(5), Duration.ofMillis(200))));
+        }
 
-        if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
+        if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
             sendTotpPrompt(player);
         }
     }
@@ -376,6 +360,7 @@ public class AuthManager {
                 player.hideBossBar(pending.bossBar);
             }
         }
+        player.clearTitle();
         player.sendActionBar(Component.empty());
     }
 
@@ -391,6 +376,7 @@ public class AuthManager {
                 player.hideBossBar(pending.bossBar);
             }
         }
+        player.clearTitle();
         player.sendActionBar(Component.empty());
     }
 

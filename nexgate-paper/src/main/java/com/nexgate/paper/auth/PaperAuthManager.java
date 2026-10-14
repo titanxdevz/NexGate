@@ -116,6 +116,8 @@ public class PaperAuthManager {
                     false,
                     false
             ));
+        } else {
+            player.removePotionEffect(PotionEffectType.BLINDNESS);
         }
 
         if (configManager.isApplySlowness()) {
@@ -126,6 +128,8 @@ public class PaperAuthManager {
                     false,
                     false
             ));
+        } else {
+            player.removePotionEffect(PotionEffectType.SLOWNESS);
         }
     }
 

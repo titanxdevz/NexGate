@@ -82,7 +82,6 @@ public class AuthGateListener implements Listener {
                     from.getBlockY() != to.getBlockY() ||
                     from.getBlockZ() != to.getBlockZ())) {
                 event.setCancelled(true);
-                player.sendActionBar(MINI.deserialize("<red>⚠ You must authenticate to move!</red>"));
             }
         }
     }
