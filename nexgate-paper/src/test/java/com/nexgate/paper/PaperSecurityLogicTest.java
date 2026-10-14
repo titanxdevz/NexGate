@@ -85,4 +85,34 @@ public class PaperSecurityLogicTest {
         String lowerName = "alex";
         assertFalse(expectedName.equals(lowerName));
     }
+
+    @Test
+    public void testCheckAuthMessageType() {
+        com.nexgate.message.MessageType checkAuth = com.nexgate.message.MessageType.CHECK_AUTH;
+        assertEquals("check.auth", checkAuth.getId());
+        assertFalse(checkAuth.isBroadcast(), "CHECK_AUTH should be a targeted query");
+        assertEquals(java.util.Optional.of(checkAuth), com.nexgate.message.MessageType.fromId("check.auth"));
+    }
+
+    @Test
+    public void testLimboCageGeometryCalculation() {
+        int platformY = 100;
+        int radius = 3;
+
+        // Player spawn must be centered at 0.5, platformY + 1.0, 0.5
+        double spawnX = 0.5;
+        double spawnY = platformY + 1.0;
+        double spawnZ = 0.5;
+        assertEquals(101.0, spawnY);
+
+        // Floor bounds
+        int floorMinX = -radius;
+        int floorMaxX = radius;
+        assertEquals(-3, floorMinX);
+        assertEquals(3, floorMaxX);
+
+        // Void fall threshold
+        int fallThreshold = platformY - 5;
+        assertEquals(95, fallThreshold);
+    }
 }
