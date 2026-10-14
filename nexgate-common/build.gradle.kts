@@ -5,6 +5,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.xerial:sqlite-jdbc:3.47.0.0")
     implementation("com.mysql:mysql-connector-j:9.1.0")
+    implementation("org.postgresql:postgresql:42.7.4")
     
     // Adventure API (provided by Velocity & Paper runtimes)
     compileOnly("net.kyori:adventure-api:4.17.0")

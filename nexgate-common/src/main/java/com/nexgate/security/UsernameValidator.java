@@ -4,22 +4,50 @@ import java.util.regex.Pattern;
 
 /**
  * Validates Minecraft username format and protects against casing and spoofing exploits.
+ * Supports standard Java Edition usernames and Bedrock / Floodgate prefixed gamertags.
  */
 public class UsernameValidator {
 
-    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{3,16}$");
+    // Standard Java Edition username: 3-16 alphanumeric or underscore characters
+    private static final Pattern STANDARD_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{3,16}$");
+
+    // Floodgate / Bedrock pattern: allows leading prefix like '.' or '*' followed by 1-16 valid characters
+    private static final Pattern FLOODGATE_PATTERN = Pattern.compile("^[.*][a-zA-Z0-9_ ]{1,16}$");
 
     private UsernameValidator() {
     }
 
     /**
-     * Checks if a username conforms to official Minecraft naming conventions.
+     * Checks if a username conforms to official Minecraft Java naming conventions.
      */
     public static boolean isValidUsername(String username) {
-        if (username == null) {
+        return isValidUsername(username, false);
+    }
+
+    /**
+     * Checks if a username conforms to Minecraft naming conventions, optionally allowing Floodgate prefix.
+     */
+    public static boolean isValidUsername(String username, boolean allowFloodgate) {
+        if (username == null || username.isEmpty()) {
             return false;
         }
-        return USERNAME_PATTERN.matcher(username).matches();
+        if (STANDARD_PATTERN.matcher(username).matches()) {
+            return true;
+        }
+        if (allowFloodgate && FLOODGATE_PATTERN.matcher(username).matches()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Checks if username is a Floodgate Bedrock formatted name.
+     */
+    public static boolean isFloodgateUsername(String username) {
+        if (username == null || username.isEmpty()) {
+            return false;
+        }
+        return FLOODGATE_PATTERN.matcher(username).matches();
     }
 
     /**

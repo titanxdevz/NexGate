@@ -18,15 +18,20 @@ public class UserAuth {
     private final String lastIp;
     private final boolean premium;
     private final UUID premiumUuid;
+    private final AccountType accountType;
     private final String messageColor;
     private final String messageStyle;
     private final String totpSecret;
     private final boolean totpEnabled;
+    private final String totpRecoveryCodes;
+    private final boolean locked;
+    private final String lockReason;
 
     public UserAuth(long id, String username, String usernameLower, UUID uuid, String passwordHash,
                     String ip, long regDate, long lastLogin, String lastIp, boolean premium,
-                    UUID premiumUuid, String messageColor, String messageStyle,
-                    String totpSecret, boolean totpEnabled) {
+                    UUID premiumUuid, AccountType accountType, String messageColor, String messageStyle,
+                    String totpSecret, boolean totpEnabled, String totpRecoveryCodes,
+                    boolean locked, String lockReason) {
         this.id = id;
         this.username = Objects.requireNonNull(username, "username cannot be null");
         this.usernameLower = usernameLower != null ? usernameLower : username.toLowerCase();
@@ -38,18 +43,24 @@ public class UserAuth {
         this.lastIp = lastIp;
         this.premium = premium;
         this.premiumUuid = premiumUuid;
+        this.accountType = accountType != null ? accountType : (premium ? AccountType.PREMIUM : AccountType.OFFLINE);
         this.messageColor = messageColor != null ? messageColor : "WHITE";
         this.messageStyle = messageStyle != null ? messageStyle : "DEFAULT";
         this.totpSecret = totpSecret;
         this.totpEnabled = totpEnabled;
+        this.totpRecoveryCodes = totpRecoveryCodes;
+        this.locked = locked;
+        this.lockReason = lockReason;
     }
 
     // Convenience constructor for backwards compatibility
     public UserAuth(long id, String username, String usernameLower, UUID uuid, String passwordHash,
                     String ip, long regDate, long lastLogin, String lastIp, boolean premium,
+                    UUID premiumUuid, String messageColor, String messageStyle,
                     String totpSecret, boolean totpEnabled) {
         this(id, username, usernameLower, uuid, passwordHash, ip, regDate, lastLogin, lastIp,
-                premium, null, "WHITE", "DEFAULT", totpSecret, totpEnabled);
+                premium, premiumUuid, premium ? AccountType.PREMIUM : AccountType.OFFLINE,
+                messageColor, messageStyle, totpSecret, totpEnabled, null, false, null);
     }
 
     public long getId() {
@@ -96,6 +107,10 @@ public class UserAuth {
         return premiumUuid;
     }
 
+    public AccountType getAccountType() {
+        return accountType;
+    }
+
     public String getMessageColor() {
         return messageColor;
     }
@@ -110,6 +125,18 @@ public class UserAuth {
 
     public boolean isTotpEnabled() {
         return totpEnabled;
+    }
+
+    public String getTotpRecoveryCodes() {
+        return totpRecoveryCodes;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public String getLockReason() {
+        return lockReason;
     }
 
     public static Builder builder() {
@@ -128,10 +155,14 @@ public class UserAuth {
         private String lastIp;
         private boolean premium;
         private UUID premiumUuid;
+        private AccountType accountType;
         private String messageColor = "WHITE";
         private String messageStyle = "DEFAULT";
         private String totpSecret;
         private boolean totpEnabled;
+        private String totpRecoveryCodes;
+        private boolean locked;
+        private String lockReason;
 
         public Builder id(long id) {
             this.id = id;
@@ -183,11 +214,19 @@ public class UserAuth {
 
         public Builder premium(boolean premium) {
             this.premium = premium;
+            if (this.accountType == null) {
+                this.accountType = premium ? AccountType.PREMIUM : AccountType.OFFLINE;
+            }
             return this;
         }
 
         public Builder premiumUuid(UUID premiumUuid) {
             this.premiumUuid = premiumUuid;
+            return this;
+        }
+
+        public Builder accountType(AccountType accountType) {
+            this.accountType = accountType;
             return this;
         }
 
@@ -211,10 +250,26 @@ public class UserAuth {
             return this;
         }
 
+        public Builder totpRecoveryCodes(String totpRecoveryCodes) {
+            this.totpRecoveryCodes = totpRecoveryCodes;
+            return this;
+        }
+
+        public Builder locked(boolean locked) {
+            this.locked = locked;
+            return this;
+        }
+
+        public Builder lockReason(String lockReason) {
+            this.lockReason = lockReason;
+            return this;
+        }
+
         public UserAuth build() {
             return new UserAuth(id, username, usernameLower, uuid, passwordHash, ip,
-                    regDate, lastLogin, lastIp, premium, premiumUuid,
-                    messageColor, messageStyle, totpSecret, totpEnabled);
+                    regDate, lastLogin, lastIp, premium, premiumUuid, accountType,
+                    messageColor, messageStyle, totpSecret, totpEnabled, totpRecoveryCodes,
+                    locked, lockReason);
         }
     }
 }

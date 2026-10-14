@@ -81,3 +81,5 @@ cache/
 .env.*
 *.local
 *.secret
+
+minecraft-server
