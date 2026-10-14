@@ -324,4 +324,8 @@ public class AntiBotManager {
     public void setMaxConcurrentPerIp(int max) {
         this.maxConcurrentPerIp = max;
     }
+
+    public void setFastReconnectThresholdMs(long ms) {
+        this.fastReconnectThresholdMs = ms;
+    }
 }

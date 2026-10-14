@@ -108,6 +108,7 @@ public class AntiBotManagerTest {
     @Test
     public void testConcurrentConnectionsPerIp() {
         antiBot.setMaxConcurrentPerIp(2);
+        antiBot.setFastReconnectThresholdMs(0); // isolate concurrency limit from fast-reconnect check
         String ip = "192.168.20.1";
 
         // 1st connection
