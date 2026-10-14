@@ -71,4 +71,9 @@ public class NexGatePaperPlugin extends JavaPlugin {
     public LimboManager getLimboManager() {
         return limboManager;
     }
+
+    @Override
+    public org.bukkit.generator.ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
+        return new com.nexgate.paper.limbo.VoidChunkGenerator();
+    }
 }
