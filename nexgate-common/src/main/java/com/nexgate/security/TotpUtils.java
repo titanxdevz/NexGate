@@ -113,8 +113,8 @@ public class TotpUtils {
     public static List<String> generatePlainRecoveryCodes(int count) {
         List<String> codes = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            StringBuilder sb = new StringBuilder(10);
-            for (int j = 0; j < 9; j++) {
+            StringBuilder sb = new StringBuilder(9);
+            for (int j = 0; j < 8; j++) {
                 if (j == 4) {
                     sb.append('-');
                 }

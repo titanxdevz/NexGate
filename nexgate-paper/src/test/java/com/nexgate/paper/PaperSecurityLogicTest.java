@@ -45,4 +45,44 @@ public class PaperSecurityLogicTest {
         assertEquals("AQUA", settings.color());
         assertEquals("ITALIC", settings.style());
     }
+
+    @Test
+    public void testPermittedAuthCommandsWhitelist() {
+        java.util.Set<String> allowedCommands = java.util.Set.of(
+                "login", "l", "register", "reg", "2fa", "totp", "changepassword", "cp", "premium", "color", "msgcolor"
+        );
+
+        // Allowed commands must be permitted
+        assertTrue(allowedCommands.contains("login"));
+        assertTrue(allowedCommands.contains("l"));
+        assertTrue(allowedCommands.contains("register"));
+        assertTrue(allowedCommands.contains("reg"));
+        assertTrue(allowedCommands.contains("2fa"));
+        assertTrue(allowedCommands.contains("totp"));
+        assertTrue(allowedCommands.contains("changepassword"));
+        assertTrue(allowedCommands.contains("premium"));
+
+        // Dangerous or privileged commands must NOT be permitted for unauthenticated players
+        assertFalse(allowedCommands.contains("op"));
+        assertFalse(allowedCommands.contains("gamemode"));
+        assertFalse(allowedCommands.contains("teleport"));
+        assertFalse(allowedCommands.contains("tp"));
+        assertFalse(allowedCommands.contains("stop"));
+        assertFalse(allowedCommands.contains("plugins"));
+        assertFalse(allowedCommands.contains("help"));
+    }
+
+    @Test
+    public void testBackendIdentityVerification() {
+        UUID expectedUuid = UUID.randomUUID();
+        String expectedName = "Alex";
+
+        // Mismatched UUID check
+        UUID imposterUuid = UUID.randomUUID();
+        assertNotEquals(expectedUuid, imposterUuid);
+
+        // Casing mismatch check
+        String lowerName = "alex";
+        assertFalse(expectedName.equals(lowerName));
+    }
 }

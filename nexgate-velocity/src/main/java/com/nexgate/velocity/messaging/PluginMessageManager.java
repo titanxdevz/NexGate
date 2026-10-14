@@ -141,6 +141,36 @@ public class PluginMessageManager {
         logger.debug("Sent signed logout for {} to server {}", playerName, targetServer.getServerInfo().getName());
     }
 
+    /**
+     * Broadcasts authenticated force-disconnect command to a server.
+     */
+    public void sendForceDisconnect(RegisteredServer targetServer, String playerName, UUID uuid, String reason) {
+        if (targetServer == null) return;
+
+        long timestamp = System.currentTimeMillis();
+        String nonce = HashingUtils.generateSecureToken(16);
+        String uuidStr = uuid == null ? "" : uuid.toString();
+        String safeReason = reason == null ? "Disconnected by proxy." : reason;
+
+        String hmac = HmacUtils.computeCanonicalHmac(
+                configManager.getHmacSecret(), HmacUtils.CURRENT_PROTOCOL_VERSION,
+                MessageType.FORCE_DISCONNECT.getId(), "velocity", uuidStr, playerName,
+                nonce, timestamp, safeReason
+        );
+
+        ByteArrayDataOutput out = ByteStreams.newDataOutput();
+        out.writeUTF(MessageType.FORCE_DISCONNECT.getId());
+        out.writeUTF(playerName);
+        out.writeUTF(nonce);
+        out.writeLong(timestamp);
+        out.writeUTF(uuidStr);
+        out.writeUTF(safeReason);
+        out.writeUTF(hmac);
+
+        targetServer.sendPluginMessage(channel, out.toByteArray());
+        logger.debug("Sent signed force.disconnect for {} to server {}", playerName, targetServer.getServerInfo().getName());
+    }
+
     public class MessageListener {
         @com.velocitypowered.api.event.Subscribe
         public void onPluginMessage(PluginMessageEvent event) {
