@@ -1,7 +1,5 @@
 package com.nexgate.velocity.auth;
 
-import com.nexgate.color.ChatColorFormatter;
-import com.nexgate.color.MessageColor;
 import com.nexgate.model.UserAuth;
 import com.nexgate.velocity.config.ConfigManager;
 import com.velocitypowered.api.proxy.Player;
@@ -25,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Enterprise Auth & Session state manager for Velocity proxy.
- * Controls player authentication state, interactive BossBars, titles, and sound feedback.
+ * Controls player authentication state, TOTP challenges, interactive BossBars, titles, and sound feedback.
  */
 public class AuthManager {
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
@@ -38,8 +36,11 @@ public class AuthManager {
     // Active authenticated sessions: UUID -> SessionData
     private final Map<UUID, UserSessionData> authenticatedSessions = new ConcurrentHashMap<>();
 
-    // Unauthenticated players undergoing auth flow: UUID -> PendingAuth
+    // Unauthenticated players undergoing password auth flow: UUID -> PendingAuth
     private final Map<UUID, PendingAuth> pendingAuths = new ConcurrentHashMap<>();
+
+    // Players who passed password but need 2FA verification: UUID -> PendingTotpAuth
+    private final Map<UUID, PendingTotpAuth> pendingTotpAuths = new ConcurrentHashMap<>();
 
     public AuthManager(ProxyServer server, Logger logger, ConfigManager configManager) {
         this.server = server;
@@ -65,6 +66,16 @@ public class AuthManager {
             return false;
         }
         return true;
+    }
+
+    public boolean isPendingTotp(UUID uuid) {
+        if (uuid == null) return false;
+        return pendingTotpAuths.containsKey(uuid);
+    }
+
+    public Optional<PendingTotpAuth> getPendingTotp(UUID uuid) {
+        if (uuid == null) return Optional.empty();
+        return Optional.ofNullable(pendingTotpAuths.get(uuid));
     }
 
     public Optional<UserSessionData> getSession(UUID uuid) {
@@ -94,6 +105,7 @@ public class AuthManager {
 
         // Cancel pending auth UI (bossbar, timers, etc.)
         stopAuthFlow(player);
+        stopTotpFlow(player);
 
         // Play success chime
         if (configManager.isPlaySounds()) {
@@ -131,13 +143,15 @@ public class AuthManager {
         UUID uuid = player.getUniqueId();
         authenticatedSessions.remove(uuid);
         stopAuthFlow(player);
+        stopTotpFlow(player);
         logger.debug("Player {} logged out", player.getUsername());
     }
 
     public void startAuthFlow(Player player, boolean isRegistered) {
         if (player == null) return;
         UUID uuid = player.getUniqueId();
-        stopAuthFlow(player); // ensure clean slate
+        stopAuthFlow(player);
+        stopTotpFlow(player);
 
         long maxSeconds = configManager.getLoginTimeoutSeconds();
         BossBar bossBar = null;
@@ -155,7 +169,6 @@ public class AuthManager {
         PendingAuth pending = new PendingAuth(player, isRegistered, System.currentTimeMillis(), maxSeconds, bossBar);
         pendingAuths.put(uuid, pending);
 
-        // Schedule ticking task
         if (pluginInstance != null) {
             ScheduledTask task = server.getScheduler().buildTask(pluginInstance, () -> {
                 tickAuthFlow(uuid);
@@ -163,8 +176,39 @@ public class AuthManager {
             pending.scheduledTask = task;
         }
 
-        // Send welcome banner and sound
         sendAuthPrompt(player, isRegistered);
+    }
+
+    public void startTotpChallenge(Player player, UserAuth user) {
+        if (player == null) return;
+        UUID uuid = player.getUniqueId();
+        stopAuthFlow(player);
+        stopTotpFlow(player);
+
+        long maxSeconds = configManager.getLoginTimeoutSeconds();
+        BossBar bossBar = null;
+
+        if (configManager.isShowBossBar()) {
+            bossBar = BossBar.bossBar(
+                    MINI_MESSAGE.deserialize("<gradient:#FF512F:#DD2476>🛡 2FA Required: /2fa verify</gradient> <gray>(" + maxSeconds + "s)</gray>"),
+                    1.0f,
+                    BossBar.Color.RED,
+                    BossBar.Overlay.PROGRESS
+            );
+            player.showBossBar(bossBar);
+        }
+
+        PendingTotpAuth pending = new PendingTotpAuth(player, user, System.currentTimeMillis(), maxSeconds, bossBar);
+        pendingTotpAuths.put(uuid, pending);
+
+        if (pluginInstance != null) {
+            ScheduledTask task = server.getScheduler().buildTask(pluginInstance, () -> {
+                tickTotpFlow(uuid);
+            }).repeat(1, TimeUnit.SECONDS).schedule();
+            pending.scheduledTask = task;
+        }
+
+        sendTotpPrompt(player);
     }
 
     public void sendAuthPrompt(Player player, boolean isRegistered) {
@@ -174,7 +218,6 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:ui.button.click"), Sound.Source.MASTER, 0.8f, 1.2f));
         }
 
-        // Rich interactive clickable message banner
         Component banner = MINI_MESSAGE.deserialize("""
             <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
                          <bold><gradient:#00C9FF:#92FE9D>NexGate Security</gradient></bold>
@@ -199,12 +242,43 @@ public class AuthManager {
 
         player.sendMessage(banner.append(prompt).append(footer));
 
-        // Title
         if (configManager.isShowTitle()) {
             Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#00C9FF:#92FE9D>NexGate</gradient></bold>");
             Component subTitle = MINI_MESSAGE.deserialize(isRegistered ?
                     "<yellow>Use <gradient:#00F260:#0575E6><bold>/login <password></bold></gradient></yellow>" :
                     "<yellow>Use <gradient:#00C9FF:#92FE9D><bold>/register <pass> <pass></bold></gradient></yellow>");
+            player.showTitle(Title.title(mainTitle, subTitle,
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+        }
+    }
+
+    public void sendTotpPrompt(Player player) {
+        if (player == null) return;
+
+        if (configManager.isPlaySounds()) {
+            player.playSound(Sound.sound(Key.key("minecraft:block.note_block.bell"), Sound.Source.MASTER, 1.0f, 1.0f));
+        }
+
+        Component banner = MINI_MESSAGE.deserialize("""
+            <gradient:#FF512F:#DD2476>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
+                         <bold><gradient:#FF512F:#DD2476>Two-Factor Authentication</gradient></bold>
+            """);
+
+        Component prompt = MINI_MESSAGE.deserialize(
+                "  <gray>Two-factor authentication is active on this account:</gray>\n" +
+                "  <click:suggest_command:'/2fa verify '><hover:show_text:'<green>Click to enter 6-digit TOTP code'><gradient:#00F260:#0575E6><bold>[ 🛡 CLICK TO VERIFY 2FA ]</bold></gradient></hover></click> <dark_gray>or use <aqua>/2fa verify <code></aqua></dark_gray>\n" +
+                "  <dark_gray>Lost your authenticator? Use </dark_gray><yellow>/2fa recovery <backup-code></yellow>\n"
+        );
+
+        Component footer = MINI_MESSAGE.deserialize(
+                "<gradient:#FF512F:#DD2476>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>"
+        );
+
+        player.sendMessage(banner.append(prompt).append(footer));
+
+        if (configManager.isShowTitle()) {
+            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#FF512F:#DD2476>2FA Verification</gradient></bold>");
+            Component subTitle = MINI_MESSAGE.deserialize("<yellow>Use <gradient:#00F260:#0575E6><bold>/2fa verify <code></bold></gradient></yellow>");
             player.showTitle(Title.title(mainTitle, subTitle,
                     Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
         }
@@ -229,7 +303,6 @@ public class AuthManager {
             return;
         }
 
-        // Update BossBar
         if (pending.bossBar != null) {
             float progress = Math.max(0.0f, Math.min(1.0f, (float) remaining / (float) pending.maxSeconds));
             pending.bossBar.progress(progress);
@@ -248,14 +321,48 @@ public class AuthManager {
             ));
         }
 
-        // Actionbar heartbeat reminder
         player.sendActionBar(MINI_MESSAGE.deserialize(
                 "<red>⚠ You must authenticate to interact! <gray>(" + remaining + "s left)</gray></red>"
         ));
 
-        // Periodic reminder chat message every 15 seconds
         if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
             sendAuthPrompt(player, pending.isRegistered);
+        }
+    }
+
+    private void tickTotpFlow(UUID uuid) {
+        PendingTotpAuth pending = pendingTotpAuths.get(uuid);
+        if (pending == null) return;
+
+        Player player = pending.player;
+        if (!player.isActive()) {
+            stopTotpFlow(player);
+            return;
+        }
+
+        long elapsedSeconds = (System.currentTimeMillis() - pending.startTime) / 1000;
+        long remaining = pending.maxSeconds - elapsedSeconds;
+
+        if (remaining <= 0) {
+            stopTotpFlow(player);
+            player.disconnect(MINI_MESSAGE.deserialize(configManager.getConfig().messages.authTimeout));
+            return;
+        }
+
+        if (pending.bossBar != null) {
+            float progress = Math.max(0.0f, Math.min(1.0f, (float) remaining / (float) pending.maxSeconds));
+            pending.bossBar.progress(progress);
+            pending.bossBar.name(MINI_MESSAGE.deserialize(
+                    "<gradient:#FF512F:#DD2476>🛡 Enter 2FA: /2fa verify</gradient> <gray>(" + remaining + "s remaining)</gray>"
+            ));
+        }
+
+        player.sendActionBar(MINI_MESSAGE.deserialize(
+                "<red>⚠ 2FA code required! <gray>(" + remaining + "s left)</gray></red>"
+        ));
+
+        if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
+            sendTotpPrompt(player);
         }
     }
 
@@ -263,6 +370,20 @@ public class AuthManager {
         if (player == null) return;
         UUID uuid = player.getUniqueId();
         PendingAuth pending = pendingAuths.remove(uuid);
+        if (pending != null) {
+            if (pending.scheduledTask != null) {
+                pending.scheduledTask.cancel();
+            }
+            if (pending.bossBar != null) {
+                player.hideBossBar(pending.bossBar);
+            }
+        }
+    }
+
+    public void stopTotpFlow(Player player) {
+        if (player == null) return;
+        UUID uuid = player.getUniqueId();
+        PendingTotpAuth pending = pendingTotpAuths.remove(uuid);
         if (pending != null) {
             if (pending.scheduledTask != null) {
                 pending.scheduledTask.cancel();
@@ -337,6 +458,24 @@ public class AuthManager {
         PendingAuth(Player player, boolean isRegistered, long startTime, long maxSeconds, BossBar bossBar) {
             this.player = player;
             this.isRegistered = isRegistered;
+            this.startTime = startTime;
+            this.maxSeconds = maxSeconds;
+            this.bossBar = bossBar;
+        }
+    }
+
+    public static class PendingTotpAuth {
+        public final Player player;
+        public final UserAuth user;
+        public final long startTime;
+        public final long maxSeconds;
+        public final BossBar bossBar;
+        public ScheduledTask scheduledTask;
+        public int attempts = 0;
+
+        PendingTotpAuth(Player player, UserAuth user, long startTime, long maxSeconds, BossBar bossBar) {
+            this.player = player;
+            this.user = user;
             this.startTime = startTime;
             this.maxSeconds = maxSeconds;
             this.bossBar = bossBar;
