@@ -108,6 +108,12 @@ public class PaperAuthManager {
     public void applyAuthRestrictions(Player player) {
         if (player == null || !player.isOnline()) return;
 
+        if (configManager.isLimboCageEnabled()) {
+            player.removePotionEffect(PotionEffectType.BLINDNESS);
+            player.removePotionEffect(PotionEffectType.SLOWNESS);
+            return;
+        }
+
         if (configManager.isApplyBlindness()) {
             player.addPotionEffect(new PotionEffect(
                     PotionEffectType.BLINDNESS,
@@ -137,6 +143,10 @@ public class PaperAuthManager {
         if (player == null || !player.isOnline()) return;
         player.removePotionEffect(PotionEffectType.BLINDNESS);
         player.removePotionEffect(PotionEffectType.SLOWNESS);
+        player.setAllowFlight(false);
+        player.setFlying(false);
+        player.setGravity(true);
+        player.setInvulnerable(false);
         player.setWalkSpeed(0.2f);
         player.setFlySpeed(0.1f);
         player.sendActionBar(net.kyori.adventure.text.Component.empty());

@@ -64,24 +64,21 @@ public class AuthGateListener implements Listener {
         if (!authManager.isAuthenticated(player)) {
             Location from = event.getFrom();
             Location to = event.getTo();
+            if (to == null) return;
 
-            // Void fall protection: re-teleport to spawn or limbo platform
-            if (to != null && (to.getY() < player.getWorld().getMinHeight() + 5 ||
-                    (configManager.isLimboCageEnabled() && to.getY() < configManager.getLimboPlatformY() - 5))) {
-                event.setCancelled(true);
+            // Failsafe: if player somehow fell below Y=20, cleanly re-suspend at limbo spawn
+            if (to.getY() < 20.0) {
                 if (configManager.isLimboCageEnabled()) {
-                    plugin.getLimboManager().teleportToLimbo(player);
+                    plugin.getLimboManager().setupLimboPlayer(player);
                 } else {
                     player.teleport(player.getWorld().getSpawnLocation());
                 }
                 return;
             }
 
-            // Allow pitch/yaw looking, but freeze X/Y/Z translation
-            if (to != null && (from.getBlockX() != to.getBlockX() ||
-                    from.getBlockY() != to.getBlockY() ||
-                    from.getBlockZ() != to.getBlockZ())) {
-                event.setCancelled(true);
+            // Smooth head rotation: allow yaw and pitch looking freely without rubberbanding
+            if (from.getX() != to.getX() || from.getY() != to.getY() || from.getZ() != to.getZ()) {
+                event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(), to.getYaw(), to.getPitch()));
             }
         }
     }

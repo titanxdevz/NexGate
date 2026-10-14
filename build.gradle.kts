@@ -43,6 +43,10 @@ tasks.register("deployServer") {
         val targetPaperAuth = file("minecraft-server/paper-auth/plugins/NexGate-Paper-1.0.0.jar")
         val targetPaperLobby = file("minecraft-server/paper-lobby/plugins/NexGate-Paper-1.0.0.jar")
 
+        // Clear Paper remapped cache to prevent ZipException
+        file("minecraft-server/paper-auth/plugins/.paper-remapped").deleteRecursively()
+        file("minecraft-server/paper-lobby/plugins/.paper-remapped").deleteRecursively()
+
         velocityJar.copyTo(targetVelocity, overwrite = true)
         paperJar.copyTo(targetPaperAuth, overwrite = true)
         paperJar.copyTo(targetPaperLobby, overwrite = true)

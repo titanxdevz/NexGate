@@ -28,9 +28,9 @@ public class PlayerJoinListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // 1. Limbo cage positioning & vanilla join message suppression
+        // 1. Limbo void setup & vanilla join message suppression
         if (configManager.isLimboCageEnabled()) {
-            plugin.getLimboManager().teleportToLimbo(player);
+            plugin.getLimboManager().setupLimboPlayer(player);
             if (configManager.isSuppressJoinQuitMessages()) {
                 event.joinMessage(null);
             }
