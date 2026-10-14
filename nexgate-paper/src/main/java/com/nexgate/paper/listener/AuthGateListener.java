@@ -10,30 +10,42 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 import org.bukkit.event.vehicle.VehicleExitEvent;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Enterprise defense-in-depth security gate for Paper backend.
- * Blocks all world interactions, movements, and attacks for unauthenticated players.
+ * Blocks all world interactions, movements, attacks, command suggestions, and item mutations for unauthenticated players.
  * Formats in-game chat messages using player's custom color preferences.
  */
 public class AuthGateListener implements Listener {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
+    private static final Set<String> ALLOWED_COMMANDS = Set.of(
+            "login", "l", "register", "reg", "2fa", "changepassword", "cp"
+    );
 
     private final NexGatePaperPlugin plugin;
     private final PaperAuthManager authManager;
@@ -96,10 +108,14 @@ public class AuthGateListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onCommand(PlayerCommandPreprocessEvent event) {
         if (!authManager.isAuthenticated(event.getPlayer())) {
-            String cmd = event.getMessage().toLowerCase().trim();
-            if (cmd.startsWith("/login") || cmd.startsWith("/register") ||
-                cmd.startsWith("/l ") || cmd.startsWith("/reg ") ||
-                cmd.equals("/l") || cmd.equals("/reg")) {
+            String msg = event.getMessage().trim();
+            if (msg.startsWith("/")) {
+                msg = msg.substring(1);
+            }
+            int spaceIdx = msg.indexOf(' ');
+            String root = (spaceIdx == -1 ? msg : msg.substring(0, spaceIdx)).toLowerCase();
+
+            if (ALLOWED_COMMANDS.contains(root)) {
                 return;
             }
             event.setCancelled(true);
@@ -108,7 +124,29 @@ public class AuthGateListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
+    public void onCommandSend(PlayerCommandSendEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            // Filter command suggestions/tab completions so unauthenticated players cannot enumerate server commands
+            event.getCommands().removeIf(cmd -> !ALLOWED_COMMANDS.contains(cmd.toLowerCase()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onInteract(PlayerInteractEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInteractAtEntity(PlayerInteractAtEntityEvent event) {
         if (!authManager.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
@@ -122,7 +160,21 @@ public class AuthGateListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
+    public void onBlockDamage(BlockDamageEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onBlockPlace(BlockPlaceEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onSignChange(SignChangeEvent event) {
         if (!authManager.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
@@ -138,6 +190,13 @@ public class AuthGateListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPickupItem(EntityPickupItemEvent event) {
         if (event.getEntity() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onItemConsume(PlayerItemConsumeEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
@@ -164,6 +223,13 @@ public class AuthGateListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
+    public void onCraftItem(CraftItemEvent event) {
+        if (event.getWhoClicked() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onSwapHand(PlayerSwapHandItemsEvent event) {
         if (!authManager.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
@@ -183,6 +249,11 @@ public class AuthGateListener implements Listener {
         if (event.getDamager() instanceof Player player && !authManager.isAuthenticated(player)) {
             event.setCancelled(true);
         }
+        if (event.getDamager() instanceof Projectile projectile && projectile.getShooter() instanceof Player player) {
+            if (!authManager.isAuthenticated(player)) {
+                event.setCancelled(true);
+            }
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -195,6 +266,48 @@ public class AuthGateListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onVehicleExit(VehicleExitEvent event) {
         if (event.getExited() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onVehicleDamage(VehicleDamageEvent event) {
+        if (event.getAttacker() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onShootBow(EntityShootBowEvent event) {
+        if (event.getEntity() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onProjectileLaunch(ProjectileLaunchEvent event) {
+        if (event.getEntity().getShooter() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player player && !authManager.isAuthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBedEnter(PlayerBedEnterEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPortal(PlayerPortalEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
     }

@@ -15,11 +15,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.slf4j.Logger;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Handles incoming HMAC-signed plugin messages from Velocity proxy on Paper.
+ * Enforces cryptographic authenticity, replay defense, and constant-time signature verification.
  */
 public class PaperPluginMessageManager implements PluginMessageListener {
     private final NexGatePaperPlugin plugin;
@@ -69,7 +71,7 @@ public class PaperPluginMessageManager implements PluginMessageListener {
             switch (type) {
                 case PERFORM_LOGIN -> handlePerformLogin(in, carrier);
                 case SYNC_SETTINGS -> handleSyncSettings(in);
-                case LOGOUT -> handleLogout(in);
+                case LOGOUT, FORCE_LOGOUT -> handleLogout(in);
                 default -> logger.debug("Unhandled message type: {}", type);
             }
         } catch (Exception e) {
@@ -88,7 +90,7 @@ public class PaperPluginMessageManager implements PluginMessageListener {
             String hmac = in.readUTF();
 
             String secret = configManager.getHmacSecret();
-            if (secret.isEmpty()) {
+            if (secret == null || secret.isEmpty()) {
                 logger.warn("Rejected perform.login for {}: hmac-secret not configured!", playerName);
                 return;
             }
@@ -133,8 +135,37 @@ public class PaperPluginMessageManager implements PluginMessageListener {
     private void handleSyncSettings(ByteArrayDataInput in) {
         try {
             String playerName = in.readUTF();
+            String nonce = in.readUTF();
+            long timestamp = in.readLong();
+            String uuidStr = in.readUTF();
             String color = in.readUTF();
             String style = in.readUTF();
+            String hmac = in.readUTF();
+
+            String secret = configManager.getHmacSecret();
+            if (secret == null || secret.isEmpty()) {
+                logger.warn("Rejected sync.settings: hmac-secret not configured!");
+                return;
+            }
+
+            // 1. Replay attack and timestamp check
+            if (!replayProtection.checkAndRecord(nonce, timestamp)) {
+                logger.warn("Rejected sync.settings for {}: replay attack detected or message expired!", playerName);
+                return;
+            }
+
+            // 2. Constant-time HMAC verification
+            String payload = color + ":" + style;
+            boolean valid = HmacUtils.verifyCanonicalHmac(
+                    List.of(secret), HmacUtils.CURRENT_PROTOCOL_VERSION,
+                    MessageType.SYNC_SETTINGS.getId(), "velocity", uuidStr, playerName,
+                    nonce, timestamp, payload, hmac
+            );
+
+            if (!valid) {
+                logger.warn("Rejected sync.settings for {}: invalid HMAC signature!", playerName);
+                return;
+            }
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Player target = plugin.getServer().getPlayerExact(playerName);
@@ -151,10 +182,40 @@ public class PaperPluginMessageManager implements PluginMessageListener {
     private void handleLogout(ByteArrayDataInput in) {
         try {
             String playerName = in.readUTF();
+            String nonce = in.readUTF();
+            long timestamp = in.readLong();
+            String uuidStr = in.readUTF();
+            String hmac = in.readUTF();
+
+            String secret = configManager.getHmacSecret();
+            if (secret == null || secret.isEmpty()) {
+                logger.warn("Rejected logout: hmac-secret not configured!");
+                return;
+            }
+
+            // 1. Replay attack and timestamp check
+            if (!replayProtection.checkAndRecord(nonce, timestamp)) {
+                logger.warn("Rejected logout for {}: replay attack detected or message expired!", playerName);
+                return;
+            }
+
+            // 2. Constant-time HMAC verification
+            boolean valid = HmacUtils.verifyCanonicalHmac(
+                    List.of(secret), HmacUtils.CURRENT_PROTOCOL_VERSION,
+                    MessageType.LOGOUT.getId(), "velocity", uuidStr, playerName,
+                    nonce, timestamp, "logout", hmac
+            );
+
+            if (!valid) {
+                logger.warn("Rejected logout for {}: invalid HMAC signature!", playerName);
+                return;
+            }
+
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Player target = plugin.getServer().getPlayerExact(playerName);
                 if (target != null) {
                     authManager.deauthenticate(target);
+                    logger.debug("Deauthenticated {} on backend via signed logout", playerName);
                 }
             });
         } catch (Exception e) {

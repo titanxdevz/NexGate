@@ -1,6 +1,7 @@
 package com.nexgate.security;
 
 import com.nexgate.crypto.HashingUtils;
+import com.nexgate.crypto.HmacUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

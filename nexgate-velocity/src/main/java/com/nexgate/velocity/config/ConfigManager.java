@@ -3,6 +3,7 @@ package com.nexgate.velocity.config;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nexgate.crypto.HashingUtils;
+import com.nexgate.model.AuthMode;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -63,6 +64,10 @@ public class ConfigManager {
 
     public VelocityConfig getConfig() {
         return config;
+    }
+
+    public AuthMode getAuthMode() {
+        return AuthMode.fromString(config.auth.authMode);
     }
 
     public String getHmacSecret() {
@@ -146,11 +151,15 @@ public class ConfigManager {
         public Auth auth = new Auth();
         public Security security = new Security();
         public Premium premium = new Premium();
+        public AntiBotConfig antibot = new AntiBotConfig();
+        public TotpConfig totp = new TotpConfig();
+        public Argon2Config argon2 = new Argon2Config();
         public Database database = new Database();
         public Messages messages = new Messages();
     }
 
     public static class Auth {
+        public String authMode = "HYBRID"; // ONLINE_ONLY, OFFLINE_AUTH, HYBRID
         public List<String> authServers = new ArrayList<>(List.of("auth"));
         public String targetServer = "lobby";
         public long loginTimeoutSeconds = 60;
@@ -195,8 +204,36 @@ public class ConfigManager {
         public int cacheDurationMinutes = 60;
     }
 
+    public static class AntiBotConfig {
+        public boolean enabled = true;
+        public String mode = "AUTO"; // AUTO, ON, OFF
+        public int globalRateLimit = 40;
+        public int perIpRateLimit = 4;
+        public int maxConcurrentPerIp = 3;
+        public long fastReconnectThresholdMs = 1200;
+        public int mitigationThreshold = 15;
+        public long mitigationDurationSeconds = 60;
+        public List<String> blacklistedCidrs = new ArrayList<>();
+        public List<String> whitelistedCidrs = new ArrayList<>();
+    }
+
+    public static class TotpConfig {
+        public boolean enabled = true;
+        public String issuer = "NexGate Network";
+        public int windowSteps = 1;
+        public int maxAttempts = 5;
+        public long lockoutDurationSeconds = 300;
+    }
+
+    public static class Argon2Config {
+        public int maxConcurrent = 2;
+        public int iterations = 3;
+        public int memoryKb = 65536;
+        public int parallelism = 1;
+    }
+
     public static class Database {
-        public String type = "sqlite"; // "sqlite" or "mysql"
+        public String type = "sqlite"; // "sqlite", "mysql", or "postgresql"
         public String sqliteFile = "plugins/nexgate/nexgate.db";
         public String host = "localhost";
         public int port = 3306;
@@ -221,5 +258,13 @@ public class ConfigManager {
         public String passwordMismatch = "<red>Passwords do not match!</red>";
         public String passwordTooWeak = "<red>Password rejected: {reason}</red>";
         public String authTimeout = "<red>Authentication timed out. Please rejoin.</red>";
+        public String authModeOnlineOnly = "<red>This server requires an official verified Minecraft Java Edition account.</red>";
+        public String premiumImpersonationKick = "<red>This username belongs to a verified Premium account and cannot be accessed via offline mode.</red>";
+        public String mojangUnavailable = "<red>Mojang authentication servers are currently unreachable. Please try again shortly.</red>";
+        public String pendingPremiumPrompt = "<yellow>Pending Premium verification! Please join using your official paid Minecraft launcher.</yellow>";
+        public String totpPrompt = "<yellow>Two-factor authentication required. Use <gradient:#00C9FF:#92FE9D><bold>/2fa verify <code></bold></gradient></yellow>";
+        public String totpRequiredAction = "<red>⚠ You must enter your 2FA code before continuing! Use /2fa verify <code></red>";
+        public String totpCodeInvalid = "<red>Invalid two-factor authentication code! Attempts remaining: {attempts}</red>";
+        public String totpLocked = "<red>Too many invalid 2FA attempts! Account locked for {seconds}s.</red>";
     }
 }
