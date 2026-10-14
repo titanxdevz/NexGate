@@ -63,7 +63,7 @@ public class NexGateVelocityPlugin {
         // Register event listeners
         EventManager eventManager = server.getEventManager();
         eventManager.register(this, new ConnectionListener(server, logger, authService, authManager, configManager));
-        eventManager.register(this, new ServerListener(server, logger, authManager, configManager, messageManager));
+        eventManager.register(this, new ServerListener(this, server, logger, authManager, configManager, messageManager));
 
         // Register player and administrative commands
         registerCommands();

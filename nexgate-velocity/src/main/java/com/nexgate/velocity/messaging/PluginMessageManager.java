@@ -11,6 +11,8 @@ import com.nexgate.velocity.auth.AuthManager;
 import com.nexgate.velocity.config.ConfigManager;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
@@ -180,7 +182,12 @@ public class PluginMessageManager {
 
             event.setResult(PluginMessageEvent.ForwardResult.handled());
 
-            if (!(event.getSource() instanceof RegisteredServer)) {
+            RegisteredServer senderServer = null;
+            if (event.getSource() instanceof ServerConnection serverConn) {
+                senderServer = serverConn.getServer();
+            } else if (event.getSource() instanceof RegisteredServer s) {
+                senderServer = s;
+            } else {
                 return;
             }
 
@@ -193,10 +200,34 @@ public class PluginMessageManager {
                 }
 
                 MessageType type = typeOpt.get();
-                if (type == MessageType.PERFORM_LOGIN_ACK) {
-                    logger.debug("Received perform.login.ack from backend");
+                if (type == MessageType.CHECK_AUTH) {
+                    String playerName = in.readUTF();
+                    String uuidStr = in.readUTF();
+                    UUID uuid = uuidStr.isEmpty() ? null : UUID.fromString(uuidStr);
+
+                    Player player = null;
+                    if (uuid != null) {
+                        player = server.getPlayer(uuid).orElse(null);
+                    }
+                    if (player == null) {
+                        player = server.getPlayer(playerName).orElse(null);
+                    }
+
+                    if (player != null && authManager.isAuthenticated(player)) {
+                        Optional<AuthManager.UserSessionData> sessionOpt = authManager.getSession(player.getUniqueId());
+                        String color = sessionOpt.map(AuthManager.UserSessionData::messageColor).orElse("WHITE");
+                        String style = sessionOpt.map(AuthManager.UserSessionData::messageStyle).orElse("DEFAULT");
+                        sendPerformLogin(senderServer, player.getUsername(), player.getUniqueId(), color, style);
+                        logger.info("Responded to CHECK_AUTH: re-sent signed perform.login for {} to server {}",
+                                player.getUsername(), senderServer.getServerInfo().getName());
+                    } else {
+                        logger.debug("Received CHECK_AUTH for unauthenticated player {} from server {}",
+                                playerName, senderServer.getServerInfo().getName());
+                    }
+                } else if (type == MessageType.PERFORM_LOGIN_ACK) {
+                    logger.debug("Received perform.login.ack from backend server {}", senderServer.getServerInfo().getName());
                 } else if (type == MessageType.PROXY_STARTED) {
-                    logger.debug("Received proxy.started announcement from backend");
+                    logger.debug("Received proxy.started announcement from backend server {}", senderServer.getServerInfo().getName());
                 }
             } catch (Exception e) {
                 logger.warn("Failed to parse plugin message from backend", e);

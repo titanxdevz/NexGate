@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Server switching, command gating, and chat gating listener on Velocity.
@@ -24,19 +25,26 @@ import java.util.Optional;
 public class ServerListener {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
+    private final Object pluginInstance;
     private final ProxyServer server;
     private final Logger logger;
     private final AuthManager authManager;
     private final ConfigManager configManager;
     private final PluginMessageManager messageManager;
 
-    public ServerListener(ProxyServer server, Logger logger, AuthManager authManager,
+    public ServerListener(Object pluginInstance, ProxyServer server, Logger logger, AuthManager authManager,
                           ConfigManager configManager, PluginMessageManager messageManager) {
+        this.pluginInstance = pluginInstance;
         this.server = server;
         this.logger = logger;
         this.authManager = authManager;
         this.configManager = configManager;
         this.messageManager = messageManager;
+    }
+
+    public ServerListener(ProxyServer server, Logger logger, AuthManager authManager,
+                          ConfigManager configManager, PluginMessageManager messageManager) {
+        this(null, server, logger, authManager, configManager, messageManager);
     }
 
     @Subscribe(order = PostOrder.FIRST)
@@ -88,7 +96,28 @@ public class ServerListener {
             String color = sessionOpt.map(AuthManager.UserSessionData::messageColor).orElse("WHITE");
             String style = sessionOpt.map(AuthManager.UserSessionData::messageStyle).orElse("DEFAULT");
 
+            // 1. Immediate dispatch
             messageManager.sendPerformLogin(target, player.getUsername(), player.getUniqueId(), color, style);
+
+            // 2. Scheduled retry pulses (+250ms, +600ms, +1200ms) to guarantee arrival after Paper transition to PLAY
+            if (pluginInstance != null) {
+                Runnable retrySend = () -> {
+                    if (player.isActive() && authManager.isAuthenticated(player)) {
+                        player.getCurrentServer().ifPresent(cur -> {
+                            if (cur.getServer().equals(target)) {
+                                messageManager.sendPerformLogin(target, player.getUsername(), player.getUniqueId(), color, style);
+                            }
+                        });
+                    }
+                };
+
+                server.getScheduler().buildTask(pluginInstance, retrySend)
+                        .delay(250, TimeUnit.MILLISECONDS).schedule();
+                server.getScheduler().buildTask(pluginInstance, retrySend)
+                        .delay(600, TimeUnit.MILLISECONDS).schedule();
+                server.getScheduler().buildTask(pluginInstance, retrySend)
+                        .delay(1200, TimeUnit.MILLISECONDS).schedule();
+            }
         }
     }
 

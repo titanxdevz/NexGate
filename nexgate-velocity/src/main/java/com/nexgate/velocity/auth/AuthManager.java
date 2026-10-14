@@ -103,9 +103,10 @@ public class AuthManager {
         );
         authenticatedSessions.put(uuid, session);
 
-        // Cancel pending auth UI (bossbar, timers, etc.)
+        // Cancel pending auth UI (bossbar, timers, action bar)
         stopAuthFlow(player);
         stopTotpFlow(player);
+        player.sendActionBar(Component.empty());
 
         // Play success chime
         if (configManager.isPlaySounds()) {
