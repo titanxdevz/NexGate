@@ -1,5 +1,6 @@
 package com.nexgate.db;
 
+import com.nexgate.model.AccountType;
 import com.nexgate.model.SessionRecord;
 import com.nexgate.model.UserAuth;
 import com.zaxxer.hikari.HikariConfig;
@@ -13,59 +14,117 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 /**
- * Enterprise database manager supporting SQLite and MySQL/MariaDB.
- * Completely asynchronous via HikariCP and dedicated thread pool.
+ * Production-grade database manager supporting SQLite, MySQL/MariaDB, and PostgreSQL.
+ * Synchronous versioned migrations on startup with asynchronous runtime queries via HikariCP.
  */
 public class DatabaseManager {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseManager.class);
 
+    public enum DatabaseType {
+        SQLITE,
+        MYSQL,
+        POSTGRESQL;
+
+        public static DatabaseType fromString(String type) {
+            if (type == null) return SQLITE;
+            String lower = type.trim().toLowerCase();
+            if (lower.contains("postgre") || lower.contains("pg")) {
+                return POSTGRESQL;
+            } else if (lower.contains("mysql") || lower.contains("maria")) {
+                return MYSQL;
+            }
+            return SQLITE;
+        }
+    }
+
     private final HikariDataSource dataSource;
     private final ExecutorService executorService;
-    private final boolean isSqlite;
+    private final DatabaseType dbType;
 
     public DatabaseManager(String type, String host, int port, String database,
                            String username, String password, File sqliteFile) {
-        this.executorService = Executors.newFixedThreadPool(4);
-        this.isSqlite = "sqlite".equalsIgnoreCase(type);
+        this.dbType = DatabaseType.fromString(type);
+        this.executorService = new ThreadPoolExecutor(
+                2, 8, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
+                new ThreadFactory() {
+                    private int count = 0;
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r, "NexGate-DB-" + (++count));
+                        t.setDaemon(true);
+                        return t;
+                    }
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
 
         HikariConfig config = new HikariConfig();
-        if (isSqlite) {
-            if (sqliteFile.getParentFile() != null) {
-                sqliteFile.getParentFile().mkdirs();
+        switch (dbType) {
+            case SQLITE -> {
+                if (sqliteFile.getParentFile() != null) {
+                    sqliteFile.getParentFile().mkdirs();
+                }
+                config.setJdbcUrl("jdbc:sqlite:" + sqliteFile.getAbsolutePath());
+                config.setDriverClassName("org.sqlite.JDBC");
+                config.setMaximumPoolSize(1); // SQLite is single-writer
+                config.setPoolName("NexGateSqlitePool");
+                config.setConnectionTimeout(30000);
             }
-            config.setJdbcUrl("jdbc:sqlite:" + sqliteFile.getAbsolutePath());
-            config.setDriverClassName("org.sqlite.JDBC");
-            config.setMaximumPoolSize(1); // SQLite is single-writer
-            config.setPoolName("NexGateSqlitePool");
-            config.setConnectionTimeout(30000);
-        } else {
-            config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database +
-                    "?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8&allowPublicKeyRetrieval=true");
-            config.setUsername(username);
-            config.setPassword(password);
-            config.setMaximumPoolSize(10);
-            config.setMinimumIdle(2);
-            config.setConnectionTimeout(30000);
-            config.setIdleTimeout(600000);
-            config.setMaxLifetime(1800000);
-            config.setPoolName("NexGateMySqlPool");
+            case POSTGRESQL -> {
+                config.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + database);
+                config.setDriverClassName("org.postgresql.Driver");
+                config.setUsername(username);
+                config.setPassword(password);
+                config.setMaximumPoolSize(10);
+                config.setMinimumIdle(2);
+                config.setConnectionTimeout(30000);
+                config.setIdleTimeout(600000);
+                config.setMaxLifetime(1800000);
+                config.setPoolName("NexGatePostgreSqlPool");
+            }
+            case MYSQL -> {
+                config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database +
+                        "?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8&allowPublicKeyRetrieval=true");
+                config.setUsername(username);
+                config.setPassword(password);
+                config.setMaximumPoolSize(10);
+                config.setMinimumIdle(2);
+                config.setConnectionTimeout(30000);
+                config.setIdleTimeout(600000);
+                config.setMaxLifetime(1800000);
+                config.setPoolName("NexGateMySqlPool");
+            }
         }
 
         this.dataSource = new HikariDataSource(config);
-        initializeTables();
+
+        // Synchronously initialize schema and apply versioned migrations before accepting requests
+        initializeTablesAndMigrations();
     }
 
-    private void initializeTables() {
-        CompletableFuture.runAsync(() -> {
-            try (Connection conn = dataSource.getConnection();
-                 Statement stmt = conn.createStatement()) {
+    public DatabaseType getDatabaseType() {
+        return dbType;
+    }
 
-                if (isSqlite) {
+    private void initializeTablesAndMigrations() {
+        try (Connection conn = dataSource.getConnection()) {
+            boolean autoCommit = conn.getAutoCommit();
+            try (Statement stmt = conn.createStatement()) {
+                // 1. Create version tracking table
+                stmt.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS nexgate_schema_version (
+                        version INT PRIMARY KEY,
+                        description VARCHAR(255) NOT NULL,
+                        applied_at BIGINT NOT NULL
+                    );
+                """);
+
+                // 2. Base tables if not exists
+                if (dbType == DatabaseType.SQLITE) {
                     stmt.executeUpdate("""
                         CREATE TABLE IF NOT EXISTS nexgate_users (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,10 +138,15 @@ public class DatabaseManager {
                             last_ip VARCHAR(45),
                             is_premium INTEGER DEFAULT 0,
                             premium_uuid VARCHAR(36),
+                            account_type VARCHAR(16) DEFAULT 'OFFLINE',
                             message_color VARCHAR(32) DEFAULT 'WHITE',
                             message_style VARCHAR(32) DEFAULT 'DEFAULT',
                             totp_secret VARCHAR(64),
-                            totp_enabled INTEGER DEFAULT 0
+                            totp_enabled INTEGER DEFAULT 0,
+                            totp_recovery_codes TEXT,
+                            locked INTEGER DEFAULT 0,
+                            lock_reason VARCHAR(255),
+                            pending_premium INTEGER DEFAULT 0
                         );
                     """);
 
@@ -96,7 +160,68 @@ public class DatabaseManager {
                             expires_at BIGINT NOT NULL
                         );
                     """);
+
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT
+                        );
+                    """);
+                } else if (dbType == DatabaseType.POSTGRESQL) {
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_users (
+                            id BIGSERIAL PRIMARY KEY,
+                            username VARCHAR(16) NOT NULL,
+                            username_lower VARCHAR(16) NOT NULL UNIQUE,
+                            uuid VARCHAR(36),
+                            password_hash VARCHAR(255) NOT NULL,
+                            ip VARCHAR(45),
+                            reg_date BIGINT NOT NULL,
+                            last_login BIGINT,
+                            last_ip VARCHAR(45),
+                            is_premium SMALLINT DEFAULT 0,
+                            premium_uuid VARCHAR(36),
+                            account_type VARCHAR(16) DEFAULT 'OFFLINE',
+                            message_color VARCHAR(32) DEFAULT 'WHITE',
+                            message_style VARCHAR(32) DEFAULT 'DEFAULT',
+                            totp_secret VARCHAR(64),
+                            totp_enabled SMALLINT DEFAULT 0,
+                            totp_recovery_codes TEXT,
+                            locked SMALLINT DEFAULT 0,
+                            lock_reason VARCHAR(255),
+                            pending_premium SMALLINT DEFAULT 0
+                        );
+                    """);
+
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_sessions (
+                            uuid VARCHAR(36) PRIMARY KEY,
+                            username_lower VARCHAR(16) NOT NULL,
+                            session_token VARCHAR(64) NOT NULL,
+                            ip_address VARCHAR(45) NOT NULL,
+                            created_at BIGINT NOT NULL,
+                            expires_at BIGINT NOT NULL
+                        );
+                    """);
+
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id BIGSERIAL PRIMARY KEY,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT
+                        );
+                    """);
                 } else {
+                    // MySQL
                     stmt.executeUpdate("""
                         CREATE TABLE IF NOT EXISTS nexgate_users (
                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -110,10 +235,15 @@ public class DatabaseManager {
                             last_ip VARCHAR(45),
                             is_premium TINYINT(1) DEFAULT 0,
                             premium_uuid VARCHAR(36),
+                            account_type VARCHAR(16) DEFAULT 'OFFLINE',
                             message_color VARCHAR(32) DEFAULT 'WHITE',
                             message_style VARCHAR(32) DEFAULT 'DEFAULT',
                             totp_secret VARCHAR(64),
                             totp_enabled TINYINT(1) DEFAULT 0,
+                            totp_recovery_codes TEXT,
+                            locked TINYINT(1) DEFAULT 0,
+                            lock_reason VARCHAR(255),
+                            pending_premium TINYINT(1) DEFAULT 0,
                             INDEX idx_username_lower (username_lower),
                             INDEX idx_uuid (uuid),
                             INDEX idx_ip (ip)
@@ -132,30 +262,134 @@ public class DatabaseManager {
                             INDEX idx_sess_expiry (expires_at)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                     """);
+
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT,
+                            INDEX idx_audit_time (timestamp),
+                            INDEX idx_audit_actor (actor)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                    """);
                 }
-
-                // Automatic schema migrations for existing databases
-                applyMigrations(conn);
-
-                logger.info("Database initialized successfully ({})", isSqlite ? "SQLite" : "MySQL");
-            } catch (SQLException e) {
-                logger.error("Failed to initialize database tables", e);
             }
-        }, executorService);
+
+            // Apply versioned schema migrations
+            applyVersionedMigrations(conn);
+
+            logger.info("Database initialized successfully ({})", dbType);
+        } catch (SQLException e) {
+            logger.error("Failed to initialize database tables", e);
+            throw new RuntimeException("Database initialization failed", e);
+        }
     }
 
-    private void applyMigrations(Connection conn) {
-        String[] columns = {
-                "ALTER TABLE nexgate_users ADD COLUMN premium_uuid VARCHAR(36);",
-                "ALTER TABLE nexgate_users ADD COLUMN message_color VARCHAR(32) DEFAULT 'WHITE';",
-                "ALTER TABLE nexgate_users ADD COLUMN message_style VARCHAR(32) DEFAULT 'DEFAULT';"
-        };
-        for (String sql : columns) {
-            try (Statement s = conn.createStatement()) {
-                s.executeUpdate(sql);
-            } catch (SQLException ignored) {
-                // Column already exists
+    private void applyVersionedMigrations(Connection conn) throws SQLException {
+        int currentVersion = getLatestSchemaVersion(conn);
+
+        // Migration V1: Base version
+        if (currentVersion < 1) {
+            recordMigration(conn, 1, "Initial schema creation");
+        }
+
+        // Migration V2: Styling columns
+        if (currentVersion < 2) {
+            addColumnIfNotExists(conn, "nexgate_users", "premium_uuid", "VARCHAR(36)");
+            addColumnIfNotExists(conn, "nexgate_users", "message_color", "VARCHAR(32) DEFAULT 'WHITE'");
+            addColumnIfNotExists(conn, "nexgate_users", "message_style", "VARCHAR(32) DEFAULT 'DEFAULT'");
+            recordMigration(conn, 2, "Add chat customization columns");
+        }
+
+        // Migration V3: Account security, MFA, and Pending Premium
+        if (currentVersion < 3) {
+            addColumnIfNotExists(conn, "nexgate_users", "account_type", "VARCHAR(16) DEFAULT 'OFFLINE'");
+            addColumnIfNotExists(conn, "nexgate_users", "totp_recovery_codes", "TEXT");
+            addColumnIfNotExists(conn, "nexgate_users", "locked", "INTEGER DEFAULT 0");
+            addColumnIfNotExists(conn, "nexgate_users", "lock_reason", "VARCHAR(255)");
+            addColumnIfNotExists(conn, "nexgate_users", "pending_premium", "INTEGER DEFAULT 0");
+            recordMigration(conn, 3, "Add account type, 2FA recovery codes, and pending premium");
+        }
+
+        // Migration V4: Audit logging
+        if (currentVersion < 4) {
+            try (Statement stmt = conn.createStatement()) {
+                if (dbType == DatabaseType.POSTGRESQL) {
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id BIGSERIAL PRIMARY KEY,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT
+                        );
+                    """);
+                } else if (dbType == DatabaseType.SQLITE) {
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT
+                        );
+                    """);
+                } else {
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS nexgate_audit_logs (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                            timestamp BIGINT NOT NULL,
+                            actor VARCHAR(64) NOT NULL,
+                            action VARCHAR(64) NOT NULL,
+                            target VARCHAR(64),
+                            ip VARCHAR(45),
+                            detail TEXT,
+                            INDEX idx_audit_time (timestamp),
+                            INDEX idx_audit_actor (actor)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                    """);
+                }
             }
+            recordMigration(conn, 4, "Create audit logging table");
+        }
+    }
+
+    private int getLatestSchemaVersion(Connection conn) {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM nexgate_schema_version")) {
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        } catch (SQLException ignored) {
+        }
+        return 0;
+    }
+
+    private void recordMigration(Connection conn, int version, String description) throws SQLException {
+        String sql = "INSERT INTO nexgate_schema_version (version, description, applied_at) VALUES (?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, version);
+            ps.setString(2, description);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+            logger.info("Applied schema migration V{}: {}", version, description);
+        }
+    }
+
+    private void addColumnIfNotExists(Connection conn, String table, String column, String colDef) {
+        String sql = "ALTER TABLE " + table + " ADD COLUMN " + column + " " + colDef;
+        try (Statement s = conn.createStatement()) {
+            s.executeUpdate(sql);
+        } catch (SQLException ignored) {
+            // Column already exists
         }
     }
 
@@ -206,8 +440,9 @@ public class DatabaseManager {
         return CompletableFuture.supplyAsync(() -> {
             String sql = """
                 INSERT INTO nexgate_users (username, username_lower, uuid, password_hash, ip, reg_date,
-                    last_login, last_ip, is_premium, premium_uuid, message_color, message_style, totp_secret, totp_enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_login, last_ip, is_premium, premium_uuid, account_type, message_color, message_style,
+                    totp_secret, totp_enabled, totp_recovery_codes, locked, lock_reason, pending_premium)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -221,10 +456,15 @@ public class DatabaseManager {
                 ps.setString(8, user.getLastIp());
                 ps.setInt(9, user.isPremium() ? 1 : 0);
                 ps.setString(10, user.getPremiumUuid() != null ? user.getPremiumUuid().toString() : null);
-                ps.setString(11, user.getMessageColor());
-                ps.setString(12, user.getMessageStyle());
-                ps.setString(13, user.getTotpSecret());
-                ps.setInt(14, user.isTotpEnabled() ? 1 : 0);
+                ps.setString(11, user.getAccountType() != null ? user.getAccountType().name() : AccountType.OFFLINE.name());
+                ps.setString(12, user.getMessageColor());
+                ps.setString(13, user.getMessageStyle());
+                ps.setString(14, user.getTotpSecret());
+                ps.setInt(15, user.isTotpEnabled() ? 1 : 0);
+                ps.setString(16, user.getTotpRecoveryCodes());
+                ps.setInt(17, user.isLocked() ? 1 : 0);
+                ps.setString(18, user.getLockReason());
+                ps.setInt(19, user.isPendingPremium() ? 1 : 0);
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) {
                 logger.error("Error registering user " + user.getUsername(), e);
@@ -265,18 +505,71 @@ public class DatabaseManager {
         }, executorService);
     }
 
-    public CompletableFuture<Void> updatePremiumStatus(String username, boolean premium, UUID premiumUuid) {
+    public CompletableFuture<Void> updatePremiumStatus(String username, boolean premium, UUID premiumUuid, AccountType accountType) {
         String lower = username.toLowerCase();
         return CompletableFuture.runAsync(() -> {
-            String sql = "UPDATE nexgate_users SET is_premium = ?, premium_uuid = ? WHERE username_lower = ?";
+            String sql = "UPDATE nexgate_users SET is_premium = ?, premium_uuid = ?, account_type = ?, pending_premium = 0 WHERE username_lower = ?";
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setInt(1, premium ? 1 : 0);
                 ps.setString(2, premiumUuid != null ? premiumUuid.toString() : null);
-                ps.setString(3, lower);
+                ps.setString(3, accountType != null ? accountType.name() : (premium ? "PREMIUM" : "OFFLINE"));
+                ps.setString(4, lower);
                 ps.executeUpdate();
             } catch (SQLException e) {
                 logger.error("Error updating premium status for " + username, e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<Void> updatePremiumStatus(String username, boolean premium, UUID premiumUuid) {
+        return updatePremiumStatus(username, premium, premiumUuid, premium ? AccountType.PREMIUM : AccountType.OFFLINE);
+    }
+
+    public CompletableFuture<Void> setPendingPremium(String username, boolean pending) {
+        String lower = username.toLowerCase();
+        return CompletableFuture.runAsync(() -> {
+            String sql = "UPDATE nexgate_users SET pending_premium = ? WHERE username_lower = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, pending ? 1 : 0);
+                ps.setString(2, lower);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                logger.error("Error setting pending premium for " + username, e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<Void> updateTotp(String username, String secret, boolean enabled, String recoveryCodes) {
+        String lower = username.toLowerCase();
+        return CompletableFuture.runAsync(() -> {
+            String sql = "UPDATE nexgate_users SET totp_secret = ?, totp_enabled = ?, totp_recovery_codes = ? WHERE username_lower = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, secret);
+                ps.setInt(2, enabled ? 1 : 0);
+                ps.setString(3, recoveryCodes);
+                ps.setString(4, lower);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                logger.error("Error updating TOTP for " + username, e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<Void> updateAccountLock(String username, boolean locked, String reason) {
+        String lower = username.toLowerCase();
+        return CompletableFuture.runAsync(() -> {
+            String sql = "UPDATE nexgate_users SET locked = ?, lock_reason = ? WHERE username_lower = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, locked ? 1 : 0);
+                ps.setString(2, reason);
+                ps.setString(3, lower);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                logger.error("Error updating lock status for " + username, e);
             }
         }, executorService);
     }
@@ -306,7 +599,6 @@ public class DatabaseManager {
                 ps.setString(1, lower);
                 boolean deleted = ps.executeUpdate() > 0;
                 if (deleted) {
-                    // Also delete any existing sessions
                     try (PreparedStatement sessPs = conn.prepareStatement("DELETE FROM nexgate_sessions WHERE username_lower = ?")) {
                         sessPs.setString(1, lower);
                         sessPs.executeUpdate();
@@ -340,14 +632,24 @@ public class DatabaseManager {
 
     public CompletableFuture<Void> saveSession(SessionRecord session) {
         return CompletableFuture.runAsync(() -> {
-            String sql = isSqlite ?
-                    "INSERT OR REPLACE INTO nexgate_sessions (uuid, username_lower, session_token, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)" :
-                    """
+            String sql;
+            if (dbType == DatabaseType.SQLITE) {
+                sql = "INSERT OR REPLACE INTO nexgate_sessions (uuid, username_lower, session_token, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)";
+            } else if (dbType == DatabaseType.POSTGRESQL) {
+                sql = """
+                    INSERT INTO nexgate_sessions (uuid, username_lower, session_token, ip_address, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (uuid) DO UPDATE SET session_token = EXCLUDED.session_token,
+                        ip_address = EXCLUDED.ip_address, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at
+                """;
+            } else {
+                sql = """
                     INSERT INTO nexgate_sessions (uuid, username_lower, session_token, ip_address, created_at, expires_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE session_token = VALUES(session_token), ip_address = VALUES(ip_address),
                         created_at = VALUES(created_at), expires_at = VALUES(expires_at)
-                    """;
+                """;
+            }
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, session.getUuid().toString());
@@ -418,6 +720,24 @@ public class DatabaseManager {
         }, executorService);
     }
 
+    public CompletableFuture<Void> recordAuditLog(String actor, String action, String target, String ip, String detail) {
+        return CompletableFuture.runAsync(() -> {
+            String sql = "INSERT INTO nexgate_audit_logs (timestamp, actor, action, target, ip, detail) VALUES (?, ?, ?, ?, ?, ?)";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, System.currentTimeMillis());
+                ps.setString(2, actor);
+                ps.setString(3, action);
+                ps.setString(4, target);
+                ps.setString(5, ip);
+                ps.setString(6, detail);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                logger.error("Error recording audit log for " + action, e);
+            }
+        }, executorService);
+    }
+
     public CompletableFuture<List<String>> getAllUsernames() {
         return CompletableFuture.supplyAsync(() -> {
             List<String> list = new ArrayList<>();
@@ -449,13 +769,41 @@ public class DatabaseManager {
         boolean premium = rs.getInt("is_premium") == 1;
         String premUuidStr = rs.getString("premium_uuid");
         UUID premiumUuid = premUuidStr != null ? UUID.fromString(premUuidStr) : null;
+
+        String accountTypeStr = null;
+        try {
+            accountTypeStr = rs.getString("account_type");
+        } catch (SQLException ignored) {}
+        AccountType accountType = AccountType.fromString(accountTypeStr != null ? accountTypeStr : (premium ? "PREMIUM" : "OFFLINE"));
+
         String color = rs.getString("message_color");
         String style = rs.getString("message_style");
         String totpSecret = rs.getString("totp_secret");
         boolean totp = rs.getInt("totp_enabled") == 1;
 
+        String totpCodes = null;
+        try {
+            totpCodes = rs.getString("totp_recovery_codes");
+        } catch (SQLException ignored) {}
+
+        boolean locked = false;
+        try {
+            locked = rs.getInt("locked") == 1;
+        } catch (SQLException ignored) {}
+
+        String lockReason = null;
+        try {
+            lockReason = rs.getString("lock_reason");
+        } catch (SQLException ignored) {}
+
+        boolean pendingPremium = false;
+        try {
+            pendingPremium = rs.getInt("pending_premium") == 1;
+        } catch (SQLException ignored) {}
+
         return new UserAuth(id, username, usernameLower, uuid, passHash, ip, regDate,
-                lastLogin, lastIp, premium, premiumUuid, color, style, totpSecret, totp);
+                lastLogin, lastIp, premium, premiumUuid, accountType, color, style,
+                totpSecret, totp, totpCodes, locked, lockReason, pendingPremium);
     }
 
     public void close() {
@@ -464,6 +812,14 @@ public class DatabaseManager {
         }
         if (executorService != null) {
             executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(3, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }

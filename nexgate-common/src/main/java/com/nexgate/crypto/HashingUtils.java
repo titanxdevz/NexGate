@@ -15,45 +15,30 @@ import java.util.Base64;
  * License: Apache 2.0 for argon2-jvm dependency.
  */
 public class HashingUtils {
-    private static final Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
+    private static final Argon2Service DEFAULT_ARGON2 = Argon2Service.createDefault();
     private static final SecureRandom secureRandom = new SecureRandom();
-    
-    // Argon2id parameters - tuned for security while remaining fast enough
-    private static final int ITERATIONS = 3;
-    private static final int MEMORY = 65536; // 64 MB
-    private static final int PARALLELISM = 1;
     
     private HashingUtils() {
     }
     
     /**
-     * Hash a password using Argon2id.
+     * Hash a password using Argon2id with concurrency bounds.
      * @param password the plain text password
      * @return the encoded hash string (includes salt and parameters)
      */
     public static String hashPassword(String password) {
-        if (password == null || password.isEmpty()) {
-            throw new IllegalArgumentException("Password cannot be null or empty");
-        }
-        return argon2.hash(ITERATIONS, MEMORY, PARALLELISM, password.toCharArray());
+        return DEFAULT_ARGON2.hashPassword(password);
     }
     
     /**
-     * Verify a password against an Argon2id hash.
+     * Verify a password against an Argon2id hash with validation and concurrency bounds.
      * Uses constant-time comparison internally via Argon2 library.
      * @param password the plain text password
      * @param hash the encoded hash from hashPassword()
      * @return true if password matches
      */
     public static boolean verifyPassword(String password, String hash) {
-        if (password == null || hash == null || hash.isEmpty()) {
-            return false;
-        }
-        try {
-            return argon2.verify(hash, password.toCharArray());
-        } catch (Exception e) {
-            return false;
-        }
+        return DEFAULT_ARGON2.verifyPassword(password, hash);
     }
     
     /**
