@@ -114,6 +114,13 @@ public class NexGateVelocityPlugin {
                 .build();
         cmdMgr.register(premMeta, new PremiumCommand(authService, authManager));
 
+        // /2fa and /totp
+        CommandMeta totpMeta = cmdMgr.metaBuilder("2fa")
+                .aliases("totp")
+                .plugin(this)
+                .build();
+        cmdMgr.register(totpMeta, new TotpCommand(authService, authManager));
+
         // /nexgate admin command
         CommandMeta adminMeta = cmdMgr.metaBuilder("nexgate")
                 .aliases("ng")

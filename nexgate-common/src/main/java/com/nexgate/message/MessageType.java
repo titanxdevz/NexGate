@@ -16,7 +16,8 @@ public enum MessageType {
     PREMIUM_LIST_CHUNK("premium.list.chunk", false),   // backend -> proxy: chunked list
     STATE_UPDATE("state.update", true),                // generic state update
     SYNC_SETTINGS("sync.settings", true),              // sync player color/style settings
-    FORCE_LOGOUT("force.logout", false);               // force logout session
+    FORCE_LOGOUT("force.logout", false),               // force logout session
+    FORCE_DISCONNECT("force.disconnect", false);       // force disconnect backend entity
 
     private final String id;
     private final boolean broadcast;

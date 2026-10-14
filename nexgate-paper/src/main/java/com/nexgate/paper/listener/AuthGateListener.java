@@ -22,6 +22,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
@@ -44,7 +45,7 @@ import java.util.UUID;
 public class AuthGateListener implements Listener {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
     private static final Set<String> ALLOWED_COMMANDS = Set.of(
-            "login", "l", "register", "reg", "2fa", "changepassword", "cp"
+            "login", "l", "register", "reg", "2fa", "totp", "changepassword", "cp", "premium", "color", "msgcolor"
     );
 
     private final NexGatePaperPlugin plugin;
@@ -308,6 +309,41 @@ public class AuthGateListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPortal(PlayerPortalEvent event) {
         if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onArmorStandManipulate(PlayerArmorStandManipulateEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBookEdit(PlayerEditBookEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBucketFill(PlayerBucketFillEvent event) {
+        if (!authManager.isAuthenticated(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onEntityTarget(EntityTargetLivingEntityEvent event) {
+        if (event.getTarget() instanceof Player player && !authManager.isAuthenticated(player)) {
             event.setCancelled(true);
         }
     }

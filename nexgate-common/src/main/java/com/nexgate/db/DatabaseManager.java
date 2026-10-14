@@ -738,6 +738,75 @@ public class DatabaseManager {
         }, executorService);
     }
 
+    public record AuditLogEntry(long id, long timestamp, String actor, String action, String target, String ip, String detail) {}
+
+    public CompletableFuture<List<AuditLogEntry>> getRecentAuditLogs(String target, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 100);
+        return CompletableFuture.supplyAsync(() -> {
+            List<AuditLogEntry> list = new ArrayList<>();
+            String sql;
+            boolean filterByTarget = target != null && !target.isBlank();
+            if (filterByTarget) {
+                sql = "SELECT id, timestamp, actor, action, target, ip, detail FROM nexgate_audit_logs WHERE target = ? OR actor = ? ORDER BY timestamp DESC LIMIT ?";
+            } else {
+                sql = "SELECT id, timestamp, actor, action, target, ip, detail FROM nexgate_audit_logs ORDER BY timestamp DESC LIMIT ?";
+            }
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (filterByTarget) {
+                    ps.setString(1, target);
+                    ps.setString(2, target);
+                    ps.setInt(3, safeLimit);
+                } else {
+                    ps.setInt(1, safeLimit);
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        list.add(new AuditLogEntry(
+                                rs.getLong("id"),
+                                rs.getLong("timestamp"),
+                                rs.getString("actor"),
+                                rs.getString("action"),
+                                rs.getString("target"),
+                                rs.getString("ip"),
+                                rs.getString("detail")
+                        ));
+                    }
+                }
+            } catch (SQLException e) {
+                logger.error("Error retrieving audit logs", e);
+            }
+            return list;
+        }, executorService);
+    }
+
+    public CompletableFuture<List<SessionRecord>> getActiveSessions() {
+        long now = System.currentTimeMillis();
+        return CompletableFuture.supplyAsync(() -> {
+            List<SessionRecord> list = new ArrayList<>();
+            String sql = "SELECT uuid, username_lower, session_token, ip_address, created_at, expires_at FROM nexgate_sessions WHERE expires_at > ? ORDER BY expires_at DESC LIMIT 100";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, now);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        list.add(new SessionRecord(
+                                UUID.fromString(rs.getString("uuid")),
+                                rs.getString("username_lower"),
+                                rs.getString("session_token"),
+                                rs.getString("ip_address"),
+                                rs.getLong("created_at"),
+                                rs.getLong("expires_at")
+                        ));
+                    }
+                }
+            } catch (SQLException e) {
+                logger.error("Error retrieving active sessions", e);
+            }
+            return list;
+        }, executorService);
+    }
+
     public CompletableFuture<List<String>> getAllUsernames() {
         return CompletableFuture.supplyAsync(() -> {
             List<String> list = new ArrayList<>();

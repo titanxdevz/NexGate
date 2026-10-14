@@ -10,6 +10,7 @@ import java.util.List;
 
 /**
  * Command for players to check and migrate their account to Mojang Premium auto-login.
+ * Enforces cryptographic proof of ownership via official online-mode re-authentication.
  */
 public class PremiumCommand implements SimpleCommand {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -28,25 +29,7 @@ public class PremiumCommand implements SimpleCommand {
             return;
         }
 
-        if (!authManager.isAuthenticated(player)) {
-            player.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>You must be logged in to check premium status!</red>"));
-            return;
-        }
-
-        player.sendMessage(MINI.deserialize(authService.getPrefix() + "<gray>Checking Mojang session servers for official account...</gray>"));
-
-        authService.getMojangChecker().checkProfileAsync(player.getUsername()).thenAccept(profile -> {
-            if (profile.exists()) {
-                authService.getDatabaseManager().updatePremiumStatus(player.getUsername(), true, profile.uuid());
-                player.sendMessage(MINI.deserialize(authService.getPrefix() +
-                        "<gradient:#00C9FF:#92FE9D><bold>✔ Mojang account verified!</bold></gradient>\n" +
-                        "<gray>Official UUID: <aqua>" + profile.uuid() + "</aqua></gray>\n" +
-                        "<green>Your account is now set to Premium! On your next login, Velocity will automatically authenticate you without passwords.</green>"));
-            } else {
-                player.sendMessage(MINI.deserialize(authService.getPrefix() +
-                        "<red>No paid Mojang Minecraft account found for username '<white>" + player.getUsername() + "</white>'.</red>"));
-            }
-        });
+        authService.initiatePremiumMigration(player);
     }
 
     @Override
@@ -54,3 +37,4 @@ public class PremiumCommand implements SimpleCommand {
         return List.of();
     }
 }
+

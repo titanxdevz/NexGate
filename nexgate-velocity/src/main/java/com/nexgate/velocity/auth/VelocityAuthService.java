@@ -1,20 +1,21 @@
 package com.nexgate.velocity.auth;
 
 import com.nexgate.color.ChatColorFormatter;
-import com.nexgate.color.MessageColor;
-import com.nexgate.color.MessageStyle;
+import com.nexgate.crypto.Argon2Service;
 import com.nexgate.crypto.HashingUtils;
 import com.nexgate.db.DatabaseManager;
+import com.nexgate.model.AccountType;
 import com.nexgate.model.SessionRecord;
 import com.nexgate.model.UserAuth;
 import com.nexgate.premium.MojangProfileChecker;
 import com.nexgate.ratelimit.RateLimiter;
 import com.nexgate.security.PasswordValidator;
+import com.nexgate.security.TotpUtils;
+import com.nexgate.velocity.antibot.AntiBotManager;
 import com.nexgate.velocity.config.ConfigManager;
 import com.nexgate.velocity.messaging.PluginMessageManager;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
@@ -23,14 +24,15 @@ import org.slf4j.Logger;
 
 import java.io.File;
 import java.time.Duration;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Core authentication service handling registration, login, session restore,
- * premium verification, and security rate limits.
+ * Enterprise authentication service for Velocity proxy.
+ * Manages registration, password authentication, TOTP two-factor authentication,
+ * cryptographically verified premium migrations, sessions, and anti-bot mitigation.
  */
 public class VelocityAuthService {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -42,10 +44,16 @@ public class VelocityAuthService {
     private final PluginMessageManager messageManager;
 
     private final DatabaseManager databaseManager;
+    private final AntiBotManager antiBotManager;
+    private final Argon2Service argon2Service;
     private final RateLimiter ipRateLimiter;
     private final RateLimiter accountRateLimiter;
+    private final RateLimiter totpRateLimiter;
     private final PasswordValidator passwordValidator;
     private final MojangProfileChecker mojangChecker;
+
+    // Temporary storage for in-progress TOTP setups: UUID -> Base32 Secret
+    private final Map<UUID, String> pendingTotpSetups = new ConcurrentHashMap<>();
 
     public VelocityAuthService(ProxyServer server, Logger logger, ConfigManager configManager,
                                AuthManager authManager, PluginMessageManager messageManager) {
@@ -68,6 +76,26 @@ public class VelocityAuthService {
                 dbFile
         );
 
+        this.antiBotManager = new AntiBotManager();
+        this.antiBotManager.setEnabled(cfg.antibot.enabled);
+        this.antiBotManager.setMode(AntiBotManager.Mode.valueOf(cfg.antibot.mode.toUpperCase()));
+        this.antiBotManager.setGlobalRateLimit(cfg.antibot.globalRateLimit);
+        this.antiBotManager.setPerIpRateLimit(cfg.antibot.perIpRateLimit);
+        this.antiBotManager.setMaxConcurrentPerIp(cfg.antibot.maxConcurrentPerIp);
+        for (String cidr : cfg.antibot.blacklistedCidrs) {
+            this.antiBotManager.addBlacklistCidr(cidr);
+        }
+        for (String cidr : cfg.antibot.whitelistedCidrs) {
+            this.antiBotManager.addWhitelistCidr(cidr);
+        }
+
+        this.argon2Service = new Argon2Service(
+                cfg.argon2.maxConcurrent,
+                cfg.argon2.iterations,
+                cfg.argon2.memoryKb,
+                cfg.argon2.parallelism
+        );
+
         this.ipRateLimiter = new RateLimiter(
                 configManager.getRateLimitIpMax(),
                 configManager.getRateLimitIpWindow()
@@ -76,6 +104,11 @@ public class VelocityAuthService {
         this.accountRateLimiter = new RateLimiter(
                 configManager.getRateLimitAccountMax(),
                 configManager.getRateLimitAccountWindow()
+        );
+
+        this.totpRateLimiter = new RateLimiter(
+                cfg.totp.maxAttempts,
+                cfg.totp.lockoutDurationSeconds
         );
 
         this.passwordValidator = new PasswordValidator(
@@ -94,6 +127,10 @@ public class VelocityAuthService {
 
     public DatabaseManager getDatabaseManager() {
         return databaseManager;
+    }
+
+    public AntiBotManager getAntiBotManager() {
+        return antiBotManager;
     }
 
     public RateLimiter getIpRateLimiter() {
@@ -142,46 +179,45 @@ public class VelocityAuthService {
                 return CompletableFuture.completedFuture(null);
             }
 
-            return databaseManager.getUser(player.getUsername()).thenAccept(existing -> {
+            return databaseManager.getUser(player.getUsername()).thenCompose(existing -> {
                 if (existing.isPresent()) {
                     playErrorSound(player);
                     player.sendMessage(MINI.deserialize(getPrefix() + "<red>This account is already registered! Use /login <password></red>"));
-                    return;
+                    return CompletableFuture.completedFuture(null);
                 }
 
-                // Hash password using Argon2id
-                String hash = HashingUtils.hashPassword(password);
-                UserAuth newUser = UserAuth.builder()
-                        .username(player.getUsername())
-                        .usernameLower(player.getUsername().toLowerCase())
-                        .uuid(player.getUniqueId())
-                        .passwordHash(hash)
-                        .ip(ip)
-                        .lastIp(ip)
-                        .regDate(System.currentTimeMillis())
-                        .lastLogin(System.currentTimeMillis())
-                        .premium(false)
-                        .messageColor("WHITE")
-                        .messageStyle("DEFAULT")
-                        .build();
+                // Asynchronously hash password with bounded concurrency
+                return argon2Service.hashPasswordAsync(password).thenCompose(hash -> {
+                    UserAuth newUser = UserAuth.builder()
+                            .username(player.getUsername())
+                            .usernameLower(player.getUsername().toLowerCase())
+                            .uuid(player.getUniqueId())
+                            .passwordHash(hash)
+                            .ip(ip)
+                            .lastIp(ip)
+                            .regDate(System.currentTimeMillis())
+                            .lastLogin(System.currentTimeMillis())
+                            .premium(false)
+                            .accountType(AccountType.OFFLINE)
+                            .messageColor("WHITE")
+                            .messageStyle("DEFAULT")
+                            .build();
 
-                databaseManager.registerUser(newUser).thenAccept(success -> {
-                    if (success) {
-                        authManager.authenticate(player, newUser, false);
-                        player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.registerSuccess));
+                    return databaseManager.registerUser(newUser).thenAccept(success -> {
+                        if (success) {
+                            authManager.authenticate(player, newUser, false);
+                            player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.registerSuccess));
 
-                        // Create session
-                        createAndSaveSession(player);
+                            createAndSaveSession(player);
+                            syncLoginToBackend(player, newUser.getMessageColor(), newUser.getMessageStyle());
+                            maybeForwardToTarget(player);
 
-                        // Sync to current backend server
-                        syncLoginToBackend(player, newUser.getMessageColor(), newUser.getMessageStyle());
-
-                        // Forward to target server if currently on auth server
-                        maybeForwardToTarget(player);
-                    } else {
-                        playErrorSound(player);
-                        player.sendMessage(MINI.deserialize(getPrefix() + "<red>Failed to register. Please try again later.</red>"));
-                    }
+                            databaseManager.recordAuditLog(player.getUsername(), "REGISTER", player.getUsername(), ip, "Offline account registered");
+                        } else {
+                            playErrorSound(player);
+                            player.sendMessage(MINI.deserialize(getPrefix() + "<red>Failed to register. Please try again later.</red>"));
+                        }
+                    });
                 });
             });
         });
@@ -200,7 +236,7 @@ public class VelocityAuthService {
         String userKey = username.toLowerCase();
         String ip = player.getRemoteAddress().getAddress().getHostAddress();
 
-        // Check lockouts
+        // Check rate limiter lockouts
         if (accountRateLimiter.isLockedOut(userKey)) {
             long remaining = accountRateLimiter.getRemainingLockTimeSeconds(userKey);
             playErrorSound(player);
@@ -209,50 +245,418 @@ public class VelocityAuthService {
             return CompletableFuture.completedFuture(null);
         }
 
-        return databaseManager.getUser(username).thenAccept(userOpt -> {
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
             if (userOpt.isEmpty()) {
                 playErrorSound(player);
                 player.sendMessage(MINI.deserialize(getPrefix() + "<red>You are not registered yet! Use /register <pass> <confirm></red>"));
-                return;
+                return CompletableFuture.completedFuture(null);
             }
 
             UserAuth user = userOpt.get();
-            boolean correct = HashingUtils.verifyPassword(password, user.getPasswordHash());
 
-            if (!correct) {
+            // Check if administrator locked the account
+            if (user.isLocked()) {
                 playErrorSound(player);
-                boolean acquired = accountRateLimiter.tryAcquire(userKey);
-                if (!acquired) {
-                    accountRateLimiter.lockout(userKey, configManager.getLockoutDurationSeconds());
-                    long secs = configManager.getLockoutDurationSeconds();
-                    player.sendMessage(MINI.deserialize(getPrefix() +
-                            configManager.getConfig().messages.accountLocked.replace("{seconds}", String.valueOf(secs))));
-                } else {
-                    int remaining = configManager.getRateLimitAccountMax() - accountRateLimiter.getAttempts(userKey);
-                    player.sendMessage(MINI.deserialize(getPrefix() +
-                            configManager.getConfig().messages.wrongPassword.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
-                }
-                return;
+                String reason = user.getLockReason() != null ? user.getLockReason() : "Account suspended by administrator.";
+                player.sendMessage(MINI.deserialize(getPrefix() + "<red>Account is locked: " + reason + "</red>"));
+                return CompletableFuture.completedFuture(null);
             }
 
-            // Successful authentication
-            accountRateLimiter.reset(userKey);
-            ipRateLimiter.reset(ip);
+            // Asynchronously verify Argon2id hash with bounded concurrency
+            return argon2Service.verifyPasswordAsync(password, user.getPasswordHash()).thenAccept(correct -> {
+                if (!correct) {
+                    playErrorSound(player);
+                    boolean acquired = accountRateLimiter.tryAcquire(userKey);
+                    if (!acquired) {
+                        accountRateLimiter.lockout(userKey, configManager.getLockoutDurationSeconds());
+                        long secs = configManager.getLockoutDurationSeconds();
+                        player.sendMessage(MINI.deserialize(getPrefix() +
+                                configManager.getConfig().messages.accountLocked.replace("{seconds}", String.valueOf(secs))));
+                        databaseManager.recordAuditLog("system", "ACCOUNT_LOCKOUT", username, ip, "Too many wrong password attempts");
+                    } else {
+                        int remaining = configManager.getRateLimitAccountMax() - accountRateLimiter.getAttempts(userKey);
+                        player.sendMessage(MINI.deserialize(getPrefix() +
+                                configManager.getConfig().messages.wrongPassword.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
+                    }
+                    return;
+                }
 
-            // Update last login
-            databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
+                // Password matches! Reset lockout counters
+                accountRateLimiter.reset(userKey);
+                ipRateLimiter.reset(ip);
 
-            authManager.authenticate(player, user, user.isPremium());
-            player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.loginSuccess));
+                // Check if hash needs parameter rehash
+                if (argon2Service.needsRehash(user.getPasswordHash())) {
+                    argon2Service.hashPasswordAsync(password).thenAccept(newHash -> {
+                        databaseManager.updatePassword(username, newHash);
+                    });
+                }
 
-            // Create and persist session
+                // Update last login
+                databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
+
+                // Check if TOTP 2FA is enabled on this account
+                if (user.isTotpEnabled() && user.getTotpSecret() != null) {
+                    authManager.startTotpChallenge(player, user);
+                    return;
+                }
+
+                // Fully authenticated
+                authManager.authenticate(player, user, user.isPremium());
+                player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.loginSuccess));
+
+                createAndSaveSession(player);
+                syncLoginToBackend(player, user.getMessageColor(), user.getMessageStyle());
+                maybeForwardToTarget(player);
+
+                databaseManager.recordAuditLog(player.getUsername(), "LOGIN", player.getUsername(), ip, "Password login successful");
+            });
+        });
+    }
+
+    /**
+     * Verifies 6-digit TOTP code during interactive 2FA challenge.
+     */
+    public void handleTotpVerify(Player player, String code) {
+        UUID uuid = player.getUniqueId();
+        Optional<AuthManager.PendingTotpAuth> pendingOpt = authManager.getPendingTotp(uuid);
+        if (pendingOpt.isEmpty()) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<yellow>You do not have an active 2FA challenge.</yellow>"));
+            return;
+        }
+
+        AuthManager.PendingTotpAuth pending = pendingOpt.get();
+        String userKey = player.getUsername().toLowerCase();
+
+        if (totpRateLimiter.isLockedOut(userKey)) {
+            long remaining = totpRateLimiter.getRemainingLockTimeSeconds(userKey);
+            player.sendMessage(MINI.deserialize(getPrefix() +
+                    configManager.getConfig().messages.totpLocked.replace("{seconds}", String.valueOf(remaining))));
+            return;
+        }
+
+        boolean valid = TotpUtils.verifyCode(
+                pending.user.getTotpSecret(), code, configManager.getConfig().totp.windowSteps
+        );
+
+        if (!valid) {
+            playErrorSound(player);
+            boolean acquired = totpRateLimiter.tryAcquire(userKey);
+            if (!acquired) {
+                totpRateLimiter.lockout(userKey, configManager.getConfig().totp.lockoutDurationSeconds);
+                long secs = configManager.getConfig().totp.lockoutDurationSeconds;
+                player.sendMessage(MINI.deserialize(getPrefix() +
+                        configManager.getConfig().messages.totpLocked.replace("{seconds}", String.valueOf(secs))));
+            } else {
+                int remaining = configManager.getConfig().totp.maxAttempts - totpRateLimiter.getAttempts(userKey);
+                player.sendMessage(MINI.deserialize(getPrefix() +
+                        configManager.getConfig().messages.totpCodeInvalid.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
+            }
+            return;
+        }
+
+        // 2FA Verified!
+        totpRateLimiter.reset(userKey);
+        authManager.stopTotpFlow(player);
+        authManager.authenticate(player, pending.user, pending.user.isPremium());
+        player.sendMessage(MINI.deserialize(getPrefix() + "<green>✔ Two-Factor Authentication verified! Welcome back.</green>"));
+
+        createAndSaveSession(player);
+        syncLoginToBackend(player, pending.user.getMessageColor(), pending.user.getMessageStyle());
+        maybeForwardToTarget(player);
+
+        databaseManager.recordAuditLog(player.getUsername(), "TOTP_VERIFY", player.getUsername(),
+                player.getRemoteAddress().getAddress().getHostAddress(), "2FA verification successful");
+    }
+
+    /**
+     * Verifies single-use backup recovery code during interactive 2FA challenge.
+     */
+    public void handleTotpRecovery(Player player, String plainCode) {
+        UUID uuid = player.getUniqueId();
+        Optional<AuthManager.PendingTotpAuth> pendingOpt = authManager.getPendingTotp(uuid);
+        if (pendingOpt.isEmpty()) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<yellow>You do not have an active 2FA challenge.</yellow>"));
+            return;
+        }
+
+        AuthManager.PendingTotpAuth pending = pendingOpt.get();
+        String rawCodes = pending.user.getTotpRecoveryCodes();
+        if (rawCodes == null || rawCodes.trim().isEmpty()) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>No backup recovery codes found for your account. Please contact an administrator.</red>"));
+            return;
+        }
+
+        List<String> storedHashes = new ArrayList<>(Arrays.asList(rawCodes.split(",")));
+        Optional<String> matchedHash = TotpUtils.verifyAndFindRecoveryCodeHash(plainCode, storedHashes);
+
+        if (matchedHash.isEmpty()) {
+            playErrorSound(player);
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>Invalid or already used backup recovery code!</red>"));
+            return;
+        }
+
+        // Consume recovery code
+        storedHashes.remove(matchedHash.get());
+        String updatedCodes = String.join(",", storedHashes);
+        databaseManager.updateTotp(player.getUsername(), pending.user.getTotpSecret(), true, updatedCodes);
+
+        totpRateLimiter.reset(player.getUsername().toLowerCase());
+        authManager.stopTotpFlow(player);
+        authManager.authenticate(player, pending.user, pending.user.isPremium());
+
+        player.sendMessage(MINI.deserialize(getPrefix() +
+                "<green>✔ Recovery code accepted! <yellow>" + storedHashes.size() + " recovery codes remaining.</yellow></green>"));
+
+        createAndSaveSession(player);
+        syncLoginToBackend(player, pending.user.getMessageColor(), pending.user.getMessageStyle());
+        maybeForwardToTarget(player);
+
+        databaseManager.recordAuditLog(player.getUsername(), "RECOVERY_CODE_USED", player.getUsername(),
+                player.getRemoteAddress().getAddress().getHostAddress(), "Consumed recovery code; remaining: " + storedHashes.size());
+    }
+
+    /**
+     * Initiates TOTP setup for an authenticated player.
+     */
+    public void initiateTotpSetup(Player player) {
+        if (!authManager.isAuthenticated(player)) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>You must be authenticated to setup 2FA.</red>"));
+            return;
+        }
+
+        String secret = TotpUtils.generateSecret();
+        pendingTotpSetups.put(player.getUniqueId(), secret);
+
+        String uri = TotpUtils.formatTotpUri(configManager.getConfig().totp.issuer, player.getUsername(), secret);
+
+        player.sendMessage(MINI.deserialize("""
+            <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━ [ Two-Factor Authentication Setup ] ━━━━━━━━━━━</gradient>
+            <gray>1. Open your Authenticator app (Google Authenticator, Aegis, 1Password, etc.)</gray>
+            <gray>2. Add a new account manually with Secret Key:</gray>
+               <aqua><bold>%s</bold></aqua>
+            <gray>3. Or click to copy configuration URI:</gray>
+               <click:copy_to_clipboard:'%s'><hover:show_text:'<green>Click to copy OTP URI'><yellow>[ CLICK TO COPY OTP URI ]</yellow></hover></click>
+            <gray>4. Confirm by running: <green>/2fa confirm <code></green></gray>
+            <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
+            """.formatted(secret, uri)));
+    }
+
+    /**
+     * Confirms TOTP setup, generates recovery codes, and enables 2FA in database.
+     */
+    public void confirmTotpSetup(Player player, String code) {
+        UUID uuid = player.getUniqueId();
+        String pendingSecret = pendingTotpSetups.get(uuid);
+        if (pendingSecret == null) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>No pending 2FA setup found. Run <yellow>/2fa setup</yellow> first.</red>"));
+            return;
+        }
+
+        boolean valid = TotpUtils.verifyCode(pendingSecret, code, 1);
+        if (!valid) {
+            playErrorSound(player);
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>Invalid 6-digit confirmation code! Please verify the time on your authenticator device.</red>"));
+            return;
+        }
+
+        // Setup verified! Generate 8 single-use recovery codes
+        List<String> plainCodes = TotpUtils.generatePlainRecoveryCodes(8);
+        List<String> hashedCodes = TotpUtils.hashRecoveryCodes(plainCodes);
+        String joinedHashes = String.join(",", hashedCodes);
+
+        databaseManager.updateTotp(player.getUsername(), pendingSecret, true, joinedHashes).thenRun(() -> {
+            pendingTotpSetups.remove(uuid);
+            playSuccessSound(player);
+
+            StringBuilder codesDisplay = new StringBuilder();
+            for (String c : plainCodes) {
+                codesDisplay.append("  <aqua>• ").append(c).append("</aqua>\n");
+            }
+
+            player.sendMessage(MINI.deserialize("""
+                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━ [ 2FA Successfully Enabled! ] ━━━━━━━━━━</gradient>
+                <green>✔ Two-factor authentication is now active on your account!</green>
+                <yellow><bold>IMPORTANT: Save these single-use recovery codes in a safe place!</bold></yellow>
+                <gray>If you lose your phone, you can use these to recover access:</gray>
+                %s<dark_gray>Each code can only be used once.</dark_gray>
+                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
+                """.formatted(codesDisplay.toString())));
+
+            databaseManager.recordAuditLog(player.getUsername(), "TOTP_ENABLED", player.getUsername(),
+                    player.getRemoteAddress().getAddress().getHostAddress(), "2FA enabled with 8 recovery codes");
+        });
+    }
+
+    /**
+     * Disables TOTP 2FA after password and code verification.
+     */
+    public CompletableFuture<Void> disableTotp(Player player, String password, String code) {
+        return databaseManager.getUser(player.getUsername()).thenCompose(userOpt -> {
+            if (userOpt.isEmpty() || !userOpt.get().isTotpEnabled()) {
+                player.sendMessage(MINI.deserialize(getPrefix() + "<yellow>2FA is not enabled on your account.</yellow>"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            UserAuth user = userOpt.get();
+            return argon2Service.verifyPasswordAsync(password, user.getPasswordHash()).thenAccept(passOk -> {
+                if (!passOk) {
+                    playErrorSound(player);
+                    player.sendMessage(MINI.deserialize(getPrefix() + "<red>Incorrect password! Cannot disable 2FA.</red>"));
+                    return;
+                }
+
+                boolean codeOk = TotpUtils.verifyCode(user.getTotpSecret(), code, 1);
+                if (!codeOk) {
+                    playErrorSound(player);
+                    player.sendMessage(MINI.deserialize(getPrefix() + "<red>Invalid 2FA code! Cannot disable 2FA.</red>"));
+                    return;
+                }
+
+                databaseManager.updateTotp(player.getUsername(), null, false, null).thenRun(() -> {
+                    player.sendMessage(MINI.deserialize(getPrefix() + "<green>Two-factor authentication has been disabled.</green>"));
+                    databaseManager.recordAuditLog(player.getUsername(), "TOTP_DISABLED", player.getUsername(),
+                            player.getRemoteAddress().getAddress().getHostAddress(), "2FA disabled by user");
+                });
+            });
+        });
+    }
+
+    /**
+     * Changes password securely, invalidating all other sessions.
+     */
+    public CompletableFuture<Void> handleChangePassword(Player player, String oldPass, String newPass) {
+        String username = player.getUsername();
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
+            if (userOpt.isEmpty()) {
+                player.sendMessage(MINI.deserialize(getPrefix() + "<red>User record not found.</red>"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            UserAuth user = userOpt.get();
+            return argon2Service.verifyPasswordAsync(oldPass, user.getPasswordHash()).thenCompose(oldOk -> {
+                if (!oldOk) {
+                    playErrorSound(player);
+                    player.sendMessage(MINI.deserialize(getPrefix() + "<red>Current password is incorrect.</red>"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                PasswordValidator.ValidationResult val = passwordValidator.validate(newPass, username);
+                if (!val.valid()) {
+                    playErrorSound(player);
+                    player.sendMessage(MINI.deserialize(getPrefix() +
+                            configManager.getConfig().messages.passwordTooWeak.replace("{reason}", val.message())));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                return argon2Service.hashPasswordAsync(newPass).thenCompose(newHash -> {
+                    return databaseManager.updatePassword(username, newHash).thenAccept(ok -> {
+                        if (ok) {
+                            playSuccessSound(player);
+                            player.sendMessage(MINI.deserialize(getPrefix() + "<green>✔ Password changed successfully! Other active sessions were revoked.</green>"));
+
+                            // Invalidate all existing sessions and create a fresh one
+                            databaseManager.invalidateSession(player.getUniqueId());
+                            createAndSaveSession(player);
+
+                            databaseManager.recordAuditLog(username, "PASSWORD_CHANGE", username,
+                                    player.getRemoteAddress().getAddress().getHostAddress(), "Password changed; active sessions revoked");
+                        } else {
+                            playErrorSound(player);
+                            player.sendMessage(MINI.deserialize(getPrefix() + "<red>Failed to update password.</red>"));
+                        }
+                    });
+                });
+            });
+        });
+    }
+
+    /**
+     * Auto-authenticates verified Mojang premium players with cryptographic ownership verification.
+     */
+    public CompletableFuture<Void> handlePremiumAutoLogin(Player player) {
+        String username = player.getUsername();
+        String ip = player.getRemoteAddress().getAddress().getHostAddress();
+        UUID onlineUuid = player.getUniqueId();
+
+        return databaseManager.getUser(username).thenAccept(userOpt -> {
+            UserAuth user;
+            if (userOpt.isPresent()) {
+                UserAuth existing = userOpt.get();
+
+                // If account was pending cryptographic migration from /premium command
+                if (existing.isPendingPremium()) {
+                    logger.info("Player {} verified pending Mojang premium migration (UUID={})", username, onlineUuid);
+                    databaseManager.updatePremiumStatus(username, true, onlineUuid, AccountType.PREMIUM);
+                    databaseManager.recordAuditLog("system", "PREMIUM_LINK_COMPLETE", username, ip, "Upgraded to verified Premium via official login");
+                } else if (existing.isPremium()) {
+                    databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
+                } else {
+                    // Existing offline account matched username. Identity separation: do not overwrite password!
+                    logger.warn("Official Mojang player {} joined, matching existing offline account. Preserving identity separation.", username);
+                    databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
+                }
+                user = existing;
+            } else {
+                // Register verified Mojang player automatically
+                user = UserAuth.builder()
+                        .username(username)
+                        .usernameLower(username.toLowerCase())
+                        .uuid(onlineUuid)
+                        .passwordHash(HashingUtils.hashPassword(HashingUtils.generateSecureToken(32)))
+                        .ip(ip)
+                        .lastIp(ip)
+                        .regDate(System.currentTimeMillis())
+                        .lastLogin(System.currentTimeMillis())
+                        .premium(true)
+                        .premiumUuid(onlineUuid)
+                        .accountType(AccountType.PREMIUM)
+                        .messageColor("WHITE")
+                        .messageStyle("DEFAULT")
+                        .build();
+                databaseManager.registerUser(user);
+                databaseManager.recordAuditLog("system", "PREMIUM_AUTO_REGISTER", username, ip, "Registered new verified Mojang account");
+            }
+
+            authManager.authenticate(player, user, true);
+            player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.premiumAutoLogin));
+
             createAndSaveSession(player);
-
-            // Send perform.login to backend
             syncLoginToBackend(player, user.getMessageColor(), user.getMessageStyle());
-
-            // Forward to lobby/survival if currently on auth server
             maybeForwardToTarget(player);
+        });
+    }
+
+    /**
+     * Initiates cryptographic /premium migration requiring official Mojang re-authentication.
+     */
+    public void initiatePremiumMigration(Player player) {
+        if (!authManager.isAuthenticated(player)) {
+            player.sendMessage(MINI.deserialize(getPrefix() + "<red>You must be authenticated to check premium status!</red>"));
+            return;
+        }
+
+        player.sendMessage(MINI.deserialize(getPrefix() + "<gray>Checking Mojang session servers for official account...</gray>"));
+
+        mojangChecker.checkProfileAsync(player.getUsername()).thenAccept(result -> {
+            if (result.exists()) {
+                databaseManager.setPendingPremium(player.getUsername(), true).thenRun(() -> {
+                    player.sendMessage(MINI.deserialize(getPrefix() + """
+                        <gradient:#00C9FF:#92FE9D><bold>✔ Official Mojang Account Found!</bold></gradient>
+                        <gray>Mojang UUID: <aqua>%s</aqua></gray>
+                        <yellow><bold>To complete verification and enable passwordless auto-login:</bold></yellow>
+                        <gray>1. Disconnect from the server.</gray>
+                        <gray>2. Launch Minecraft using your official paid Mojang / Microsoft launcher.</gray>
+                        <gray>3. Rejoin the server. NexGate will cryptographically verify your ownership.</gray>
+                        <green>Once verified, your account will be permanently protected from offline impersonation!</green>
+                        """.formatted(result.uuid())));
+                });
+            } else if (result.isError()) {
+                player.sendMessage(MINI.deserialize(getPrefix() + "<red>Mojang API is currently unreachable. Please try again shortly.</red>"));
+            } else {
+                player.sendMessage(MINI.deserialize(getPrefix() +
+                        "<red>No paid Mojang Minecraft account found for username '<white>" + player.getUsername() + "</white>'.</red>"));
+            }
         });
     }
 
@@ -274,9 +678,12 @@ public class VelocityAuthService {
                 return CompletableFuture.completedFuture(false);
             }
 
-            // Valid session found! Load user details and authenticate
             return databaseManager.getUser(player.getUsername()).thenApply(userOpt -> {
                 UserAuth user = userOpt.orElse(null);
+                if (user != null && user.isLocked()) {
+                    return false;
+                }
+
                 authManager.authenticate(player, user, user != null && user.isPremium());
 
                 player.sendMessage(MINI.deserialize(getPrefix() +
@@ -295,47 +702,6 @@ public class VelocityAuthService {
     }
 
     /**
-     * Auto-authenticates verified Mojang premium players.
-     */
-    public CompletableFuture<Void> handlePremiumAutoLogin(Player player) {
-        String username = player.getUsername();
-        String ip = player.getRemoteAddress().getAddress().getHostAddress();
-
-        return databaseManager.getUser(username).thenAccept(userOpt -> {
-            UserAuth user;
-            if (userOpt.isPresent()) {
-                user = userOpt.get();
-                databaseManager.updatePremiumStatus(username, true, player.getUniqueId());
-                databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
-            } else {
-                // Register premium user automatically
-                user = UserAuth.builder()
-                        .username(username)
-                        .usernameLower(username.toLowerCase())
-                        .uuid(player.getUniqueId())
-                        .passwordHash(HashingUtils.hashPassword(HashingUtils.generateSecureToken(32)))
-                        .ip(ip)
-                        .lastIp(ip)
-                        .regDate(System.currentTimeMillis())
-                        .lastLogin(System.currentTimeMillis())
-                        .premium(true)
-                        .premiumUuid(player.getUniqueId())
-                        .messageColor("WHITE")
-                        .messageStyle("DEFAULT")
-                        .build();
-                databaseManager.registerUser(user);
-            }
-
-            authManager.authenticate(player, user, true);
-            player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.premiumAutoLogin));
-
-            createAndSaveSession(player);
-            syncLoginToBackend(player, user.getMessageColor(), user.getMessageStyle());
-            maybeForwardToTarget(player);
-        });
-    }
-
-    /**
      * Updates player message color and style preference.
      */
     public CompletableFuture<Void> updateMessageSettings(Player player, String colorName, String styleName) {
@@ -345,9 +711,8 @@ public class VelocityAuthService {
         return databaseManager.updateMessageColor(username, colorName, styleName).thenRun(() -> {
             authManager.updatePlayerSettings(uuid, colorName, styleName);
 
-            // Sync with backend server
             player.getCurrentServer().ifPresent(serverConn -> {
-                messageManager.sendSyncSettings(serverConn.getServer(), username, colorName, styleName);
+                messageManager.sendSyncSettings(serverConn.getServer(), username, uuid, colorName, styleName);
             });
 
             String preview = ChatColorFormatter.formatMessage("This is how your chat message will look!", colorName, styleName);
@@ -395,9 +760,81 @@ public class VelocityAuthService {
         }
     }
 
+    private void playSuccessSound(Player player) {
+        if (configManager.isPlaySounds()) {
+            player.playSound(Sound.sound(Key.key("minecraft:entity.player.levelup"), Sound.Source.MASTER, 1.0f, 1.2f));
+        }
+    }
+
+    /**
+     * Admin reset password: updates hash, invalidates sessions, and records audit trail.
+     */
+    public CompletableFuture<Boolean> handleAdminResetPassword(String actor, String username, String newPassword) {
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
+            if (userOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return argon2Service.hashPasswordAsync(newPassword).thenCompose(hash -> {
+                return databaseManager.updatePassword(username, hash).thenApply(ok -> {
+                    if (ok) {
+                        server.getPlayer(username).ifPresent(p -> {
+                            databaseManager.invalidateSession(p.getUniqueId());
+                            authManager.logout(p);
+                            p.sendMessage(MINI.deserialize(getPrefix() + "<yellow>Your password was reset by an administrator. Please re-authenticate.</yellow>"));
+                            authManager.startAuthFlow(p, true);
+                        });
+                        databaseManager.recordAuditLog(actor, "ADMIN_PASSWORD_RESET", username, "admin-console", "Password reset by " + actor);
+                    }
+                    return ok;
+                });
+            });
+        });
+    }
+
+    /**
+     * Admin lock account: sets lock flag and terminates active sessions.
+     */
+    public CompletableFuture<Boolean> handleAdminLockAccount(String actor, String username, String reason) {
+        String lockReason = (reason != null && !reason.isBlank()) ? reason : "Account suspended by administrator.";
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
+            if (userOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return databaseManager.updateAccountLock(username, true, lockReason).thenApply(v -> {
+                server.getPlayer(username).ifPresent(p -> {
+                    databaseManager.invalidateSession(p.getUniqueId());
+                    authManager.logout(p);
+                    p.disconnect(MINI.deserialize("<red>Account suspended: " + lockReason + "</red>"));
+                });
+                databaseManager.recordAuditLog(actor, "ADMIN_ACCOUNT_LOCK", username, "admin-console", "Locked: " + lockReason);
+                return true;
+            });
+        });
+    }
+
+    /**
+     * Admin unlock account: clears lock flag and resets rate-limit lockouts.
+     */
+    public CompletableFuture<Boolean> handleAdminUnlockAccount(String actor, String username) {
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
+            if (userOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return databaseManager.updateAccountLock(username, false, null).thenApply(v -> {
+                accountRateLimiter.reset(username.toLowerCase());
+                totpRateLimiter.reset(username.toLowerCase());
+                databaseManager.recordAuditLog(actor, "ADMIN_ACCOUNT_UNLOCK", username, "admin-console", "Account unlocked by " + actor);
+                return true;
+            });
+        });
+    }
+
     public void close() {
         if (databaseManager != null) {
             databaseManager.close();
+        }
+        if (argon2Service != null) {
+            argon2Service.close();
         }
     }
 }

@@ -72,6 +72,7 @@ public class PaperPluginMessageManager implements PluginMessageListener {
                 case PERFORM_LOGIN -> handlePerformLogin(in, carrier);
                 case SYNC_SETTINGS -> handleSyncSettings(in);
                 case LOGOUT, FORCE_LOGOUT -> handleLogout(in);
+                case FORCE_DISCONNECT -> handleForceDisconnect(in);
                 default -> logger.debug("Unhandled message type: {}", type);
             }
         } catch (Exception e) {
@@ -117,6 +118,18 @@ public class PaperPluginMessageManager implements PluginMessageListener {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Player target = plugin.getServer().getPlayerExact(playerName);
                 if (target != null && target.isOnline()) {
+                    // Check player UUID and exact username match against backend entity
+                    if (uuid != null && !target.getUniqueId().equals(uuid)) {
+                        logger.error("SECURITY ALERT: perform.login UUID mismatch for {}! Message UUID: {}, Player entity UUID: {}",
+                                playerName, uuid, target.getUniqueId());
+                        return;
+                    }
+                    if (!target.getName().equals(playerName)) {
+                        logger.error("SECURITY ALERT: perform.login username case mismatch for {} vs entity {}",
+                                playerName, target.getName());
+                        return;
+                    }
+
                     authManager.authenticate(target, color, style);
                     target.playSound(target.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
                     sendAck(carrier != null ? carrier : target);
@@ -220,6 +233,57 @@ public class PaperPluginMessageManager implements PluginMessageListener {
             });
         } catch (Exception e) {
             logger.warn("Failed to process logout", e);
+        }
+    }
+
+    private void handleForceDisconnect(ByteArrayDataInput in) {
+        try {
+            String playerName = in.readUTF();
+            String nonce = in.readUTF();
+            long timestamp = in.readLong();
+            String uuidStr = in.readUTF();
+            String reason = in.readUTF();
+            String hmac = in.readUTF();
+
+            String secret = configManager.getHmacSecret();
+            if (secret == null || secret.isEmpty()) {
+                logger.warn("Rejected force.disconnect: hmac-secret not configured!");
+                return;
+            }
+
+            if (!replayProtection.checkAndRecord(nonce, timestamp)) {
+                logger.warn("Rejected force.disconnect for {}: replay attack detected or message expired!", playerName);
+                return;
+            }
+
+            boolean valid = HmacUtils.verifyCanonicalHmac(
+                    List.of(secret), HmacUtils.CURRENT_PROTOCOL_VERSION,
+                    MessageType.FORCE_DISCONNECT.getId(), "velocity", uuidStr, playerName,
+                    nonce, timestamp, reason, hmac
+            );
+
+            if (!valid) {
+                logger.warn("Rejected force.disconnect for {}: invalid HMAC signature!", playerName);
+                return;
+            }
+
+            UUID uuid = uuidStr.isEmpty() ? null : UUID.fromString(uuidStr);
+
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                Player target = plugin.getServer().getPlayerExact(playerName);
+                if (target != null && target.isOnline()) {
+                    if (uuid != null && !target.getUniqueId().equals(uuid)) {
+                        logger.error("SECURITY ALERT: force.disconnect UUID mismatch for {}! Message: {}, entity: {}",
+                                playerName, uuid, target.getUniqueId());
+                        return;
+                    }
+                    authManager.deauthenticate(target);
+                    target.kick(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(reason));
+                    logger.info("Force-disconnected {} on backend via signed message: {}", playerName, reason);
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to process force.disconnect", e);
         }
     }
 

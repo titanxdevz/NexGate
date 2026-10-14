@@ -168,7 +168,189 @@ public class NexGateAdminCommand implements SimpleCommand {
                     });
                 });
             }
+            case "lock" -> {
+                if (args.length < 2) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate lock <username> [reason]</yellow>"));
+                    return;
+                }
+                String target = args[1];
+                String reason = args.length >= 3 ? String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length)) : "Administrative suspension";
+                String actor = (source instanceof Player p) ? p.getUsername() : "console";
+                authService.handleAdminLockAccount(actor, target, reason).thenAccept(ok -> {
+                    if (ok) {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Account '" + target + "' locked: " + reason + "</green>"));
+                    } else {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>User '" + target + "' not found.</red>"));
+                    }
+                });
+            }
+            case "unlock" -> {
+                if (args.length < 2) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate unlock <username></yellow>"));
+                    return;
+                }
+                String target = args[1];
+                String actor = (source instanceof Player p) ? p.getUsername() : "console";
+                authService.handleAdminUnlockAccount(actor, target).thenAccept(ok -> {
+                    if (ok) {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Account '" + target + "' unlocked and rate-limit counters reset.</green>"));
+                    } else {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>User '" + target + "' not found.</red>"));
+                    }
+                });
+            }
+            case "resetpassword" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate resetpassword <username> <newpassword></yellow>"));
+                    return;
+                }
+                String target = args[1];
+                String newPass = args[2];
+                String actor = (source instanceof Player p) ? p.getUsername() : "console";
+                authService.handleAdminResetPassword(actor, target, newPass).thenAccept(ok -> {
+                    if (ok) {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Password for '" + target + "' reset and all active sessions revoked.</green>"));
+                    } else {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>User '" + target + "' not found.</red>"));
+                    }
+                });
+            }
+            case "sessions" -> {
+                authService.getDatabaseManager().getActiveSessions().thenAccept(sessions -> {
+                    if (sessions.isEmpty()) {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<gray>No active sessions found in database.</gray>"));
+                        return;
+                    }
+                    long now = System.currentTimeMillis();
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("<gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━ [ Active Sessions (%d) ] ━━━━━━━━━━━━━━━</gradient>\n".formatted(sessions.size()));
+                    for (var s : sessions) {
+                        long remainingMin = Math.max(0, (s.getExpiresAt() - now) / 60000L);
+                        sb.append("<gray>• <white>%s</white> (<aqua>%s</aqua>) | IP: <dark_aqua>%s</dark_aqua> | Expires: <yellow>%dm</yellow></gray>\n"
+                                .formatted(s.getUsernameLower(), s.getUuid().toString().substring(0, 8) + "...", s.getIpAddress(), remainingMin));
+                    }
+                    sb.append("<gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>");
+                    source.sendMessage(MINI.deserialize(sb.toString()));
+                });
+            }
+            case "audit" -> {
+                String targetFilter = (args.length >= 2 && !args[1].isBlank()) ? args[1] : null;
+                int limit = 10;
+                if (args.length >= 3) {
+                    try {
+                        limit = Integer.parseInt(args[2]);
+                    } catch (NumberFormatException ignored) {}
+                }
+                authService.getDatabaseManager().getRecentAuditLogs(targetFilter, limit).thenAccept(logs -> {
+                    if (logs.isEmpty()) {
+                        source.sendMessage(MINI.deserialize(authService.getPrefix() + "<gray>No audit logs matching query.</gray>"));
+                        return;
+                    }
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("<gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━ [ Security Audit Logs ] ━━━━━━━━━━━━━━━</gradient>\n");
+                    for (var log : logs) {
+                        String time = DATE_FORMAT.format(new Date(log.timestamp()));
+                        sb.append("<gray>[%s] <yellow>%s</yellow> by <aqua>%s</aqua> on <white>%s</white> (<dark_aqua>%s</dark_aqua>): <white>%s</white></gray>\n"
+                                .formatted(time, log.action(), log.actor(), log.target() != null ? log.target() : "N/A", log.ip() != null ? log.ip() : "-", log.detail() != null ? log.detail() : ""));
+                    }
+                    sb.append("<gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>");
+                    source.sendMessage(MINI.deserialize(sb.toString()));
+                });
+            }
+            case "antibot" -> handleAntiBotCommand(source, args);
             default -> sendHelp(source);
+        }
+    }
+
+    private void handleAntiBotCommand(CommandSource source, String[] args) {
+        var antiBot = authService.getAntiBotManager();
+        if (args.length < 2 || "status".equalsIgnoreCase(args[1])) {
+            var m = antiBot.getMetrics();
+            source.sendMessage(MINI.deserialize("""
+                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━ [ AntiBot Security Status ] ━━━━━━━━━━━━━━━</gradient>
+                <gray>Protection Enabled: <yellow>%s</yellow> | Operating Mode: <aqua>%s</aqua></gray>
+                <gray>Under-Attack Mitigation: %s</gray>
+                <gray>Connections Evaluated: <white>%d</white></gray>
+                <gray>Connections Rejected: <red>%d</red></gray>
+                <gray>Rate Limited: <yellow>%d</yellow> | Fast Reconnect Bursts: <yellow>%d</yellow></gray>
+                <gray>Blacklisted / Banned Drops: <red>%d</red></gray>
+                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
+                """.formatted(
+                    antiBot.isEnabled(),
+                    antiBot.getMode().name(),
+                    m.mitigationActive ? "<red><bold>ACTIVE (DEFENSE ENGAGED)</bold></red>" : "<green>Inactive (Normal Traffic)</green>",
+                    m.evaluated, m.rejected, m.rateLimited, m.fastReconnects, m.blacklisted
+            )));
+            return;
+        }
+
+        String action = args[1].toLowerCase();
+        switch (action) {
+            case "mode" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot mode <auto|on|off></yellow>"));
+                    return;
+                }
+                try {
+                    com.nexgate.velocity.antibot.AntiBotManager.Mode newMode =
+                            com.nexgate.velocity.antibot.AntiBotManager.Mode.valueOf(args[2].toUpperCase());
+                    antiBot.setMode(newMode);
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>AntiBot mode updated to: <aqua>" + newMode.name() + "</aqua></green>"));
+                } catch (IllegalArgumentException e) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>Invalid mode. Choose from: auto, on, off.</red>"));
+                }
+            }
+            case "ban" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot ban <ip/cidr> [durationSeconds]</yellow>"));
+                    return;
+                }
+                String target = args[2];
+                long duration = 300;
+                if (args.length >= 4) {
+                    try {
+                        duration = Long.parseLong(args[3]);
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (target.contains("/")) {
+                    antiBot.addBlacklistCidr(target);
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Added CIDR subnet <aqua>" + target + "</aqua> to AntiBot blacklist.</green>"));
+                } else {
+                    antiBot.addTemporaryBan(target, duration);
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Temporarily throttled IP <aqua>" + target + "</aqua> for <yellow>" + duration + "s</yellow>.</green>"));
+                }
+            }
+            case "unban" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot unban <ip/cidr></yellow>"));
+                    return;
+                }
+                String target = args[2];
+                if (target.contains("/")) {
+                    boolean removed = antiBot.removeBlacklistCidr(target);
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + (removed ? "<green>Removed CIDR from blacklist.</green>" : "<yellow>CIDR not found.</yellow>")));
+                } else {
+                    boolean removed = antiBot.removeTemporaryBan(target);
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + (removed ? "<green>Unbanned IP from temporary throttling.</green>" : "<yellow>IP was not throttled.</yellow>")));
+                }
+            }
+            case "whitelist" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot whitelist <ip/cidr></yellow>"));
+                    return;
+                }
+                antiBot.addWhitelistCidr(args[2]);
+                source.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Added <aqua>" + args[2] + "</aqua> to AntiBot whitelist.</green>"));
+            }
+            case "unwhitelist" -> {
+                if (args.length < 3) {
+                    source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot unwhitelist <ip/cidr></yellow>"));
+                    return;
+                }
+                boolean removed = antiBot.removeWhitelistCidr(args[2]);
+                source.sendMessage(MINI.deserialize(authService.getPrefix() + (removed ? "<green>Removed CIDR from whitelist.</green>" : "<yellow>Not found in whitelist.</yellow>")));
+            }
+            default -> source.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>Usage: /nexgate antibot <status|mode|ban|unban|whitelist|unwhitelist></yellow>"));
         }
     }
 
@@ -178,6 +360,12 @@ public class NexGateAdminCommand implements SimpleCommand {
             <aqua>/nexgate info</aqua> <gray>- View system health, session metrics, and config</gray>
             <aqua>/nexgate reload</aqua> <gray>- Reload configuration file</gray>
             <aqua>/nexgate lookup <player></aqua> <gray>- Inspect player account details and IP logs</gray>
+            <aqua>/nexgate lock <player> [reason]</aqua> <gray>- Administratively suspend an account</gray>
+            <aqua>/nexgate unlock <player></aqua> <gray>- Restore account access and reset lockout</gray>
+            <aqua>/nexgate resetpassword <player> <newpass></aqua> <gray>- Force reset player password</gray>
+            <aqua>/nexgate sessions</aqua> <gray>- List active authenticated sessions</gray>
+            <aqua>/nexgate audit [player] [limit]</aqua> <gray>- View security audit log entries</gray>
+            <aqua>/nexgate antibot <status|mode|ban|unban|whitelist></aqua> <gray>- Manage AntiBot mitigation</gray>
             <aqua>/nexgate unregister <player></aqua> <gray>- Purge player account and active sessions</gray>
             <aqua>/nexgate forcelogin <player></aqua> <gray>- Bypass auth gate for player</gray>
             <aqua>/nexgate setpremium <player> <true|false></aqua> <gray>- Toggle player's premium status</gray>
@@ -190,7 +378,11 @@ public class NexGateAdminCommand implements SimpleCommand {
     public List<String> suggest(Invocation invocation) {
         String[] args = invocation.arguments();
         if (args.length <= 1) {
-            return List.of("info", "reload", "lookup", "unregister", "forcelogin", "setpremium", "setcolor");
+            return List.of("info", "reload", "lookup", "lock", "unlock", "resetpassword", "sessions", "audit", "antibot", "unregister", "forcelogin", "setpremium", "setcolor");
+        } else if (args.length == 2 && "antibot".equalsIgnoreCase(args[0])) {
+            return List.of("status", "mode", "ban", "unban", "whitelist", "unwhitelist");
+        } else if (args.length == 3 && "antibot".equalsIgnoreCase(args[0]) && "mode".equalsIgnoreCase(args[1])) {
+            return List.of("auto", "on", "off");
         } else if (args.length == 3 && "setpremium".equalsIgnoreCase(args[0])) {
             return List.of("true", "false");
         } else if (args.length == 3 && "setcolor".equalsIgnoreCase(args[0])) {
