@@ -20,3 +20,13 @@ allow-chat-color-formatting: true
 
 # Chat display format template
 chat-format: "<gray><player></gray> <dark_gray>»</dark_gray> <message>"
+
+# Limbo isolated void cage environment (recommended for auth servers)
+limbo-cage:
+  enabled: false
+  platform-y: 100
+  radius: 3
+  lock-time-noon: true
+  lock-weather-clear: true
+  disable-mob-spawning: true
+  suppress-join-quit-messages: true

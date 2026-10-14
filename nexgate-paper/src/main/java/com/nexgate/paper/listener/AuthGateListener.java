@@ -65,10 +65,15 @@ public class AuthGateListener implements Listener {
             Location from = event.getFrom();
             Location to = event.getTo();
 
-            // Void fall protection: re-teleport to spawn
-            if (to != null && to.getY() < player.getWorld().getMinHeight() + 5) {
+            // Void fall protection: re-teleport to spawn or limbo platform
+            if (to != null && (to.getY() < player.getWorld().getMinHeight() + 5 ||
+                    (configManager.isLimboCageEnabled() && to.getY() < configManager.getLimboPlatformY() - 5))) {
                 event.setCancelled(true);
-                player.teleport(player.getWorld().getSpawnLocation());
+                if (configManager.isLimboCageEnabled()) {
+                    plugin.getLimboManager().teleportToLimbo(player);
+                } else {
+                    player.teleport(player.getWorld().getSpawnLocation());
+                }
                 return;
             }
 

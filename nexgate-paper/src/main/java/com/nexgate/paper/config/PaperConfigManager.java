@@ -15,6 +15,13 @@ public class PaperConfigManager {
     private boolean hideUnauthenticated;
     private boolean allowChatColorFormatting;
     private String chatFormat;
+    private boolean limboCageEnabled;
+    private int limboPlatformY;
+    private int limboRadius;
+    private boolean lockTimeNoon;
+    private boolean lockWeatherClear;
+    private boolean disableMobSpawning;
+    private boolean suppressJoinQuitMessages;
 
     public PaperConfigManager(NexGatePaperPlugin plugin) {
         this.plugin = plugin;
@@ -32,6 +39,14 @@ public class PaperConfigManager {
         this.hideUnauthenticated = config.getBoolean("hide-unauthenticated-players", true);
         this.allowChatColorFormatting = config.getBoolean("allow-chat-color-formatting", true);
         this.chatFormat = config.getString("chat-format", "<gray><player></gray> <dark_gray>»</dark_gray> <message>");
+
+        this.limboCageEnabled = config.getBoolean("limbo-cage.enabled", false);
+        this.limboPlatformY = config.getInt("limbo-cage.platform-y", 100);
+        this.limboRadius = config.getInt("limbo-cage.radius", 3);
+        this.lockTimeNoon = config.getBoolean("limbo-cage.lock-time-noon", true);
+        this.lockWeatherClear = config.getBoolean("limbo-cage.lock-weather-clear", true);
+        this.disableMobSpawning = config.getBoolean("limbo-cage.disable-mob-spawning", true);
+        this.suppressJoinQuitMessages = config.getBoolean("limbo-cage.suppress-join-quit-messages", true);
 
         if (hmacSecret.isEmpty()) {
             plugin.getSLF4JLogger().warn("hmac-secret is not configured in config.yml! Communication from Velocity will be rejected.");
@@ -64,5 +79,33 @@ public class PaperConfigManager {
 
     public String getChatFormat() {
         return chatFormat;
+    }
+
+    public boolean isLimboCageEnabled() {
+        return limboCageEnabled;
+    }
+
+    public int getLimboPlatformY() {
+        return limboPlatformY;
+    }
+
+    public int getLimboRadius() {
+        return limboRadius;
+    }
+
+    public boolean isLockTimeNoon() {
+        return lockTimeNoon;
+    }
+
+    public boolean isLockWeatherClear() {
+        return lockWeatherClear;
+    }
+
+    public boolean isDisableMobSpawning() {
+        return disableMobSpawning;
+    }
+
+    public boolean isSuppressJoinQuitMessages() {
+        return suppressJoinQuitMessages;
     }
 }

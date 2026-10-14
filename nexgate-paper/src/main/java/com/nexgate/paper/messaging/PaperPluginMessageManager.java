@@ -294,4 +294,18 @@ public class PaperPluginMessageManager implements PluginMessageListener {
             carrier.sendPluginMessage(plugin, MessageChannel.MAIN_CHANNEL, out.toByteArray());
         }
     }
+
+    /**
+     * Sends a CHECK_AUTH query to Velocity to verify if the joining player is already authenticated.
+     */
+    public void sendCheckAuth(Player player) {
+        if (player != null && player.isOnline()) {
+            ByteArrayDataOutput out = ByteStreams.newDataOutput();
+            out.writeUTF(MessageType.CHECK_AUTH.getId());
+            out.writeUTF(player.getName());
+            out.writeUTF(player.getUniqueId().toString());
+            player.sendPluginMessage(plugin, MessageChannel.MAIN_CHANNEL, out.toByteArray());
+            logger.debug("Sent CHECK_AUTH query to proxy for {}", player.getName());
+        }
+    }
 }

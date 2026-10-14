@@ -219,35 +219,36 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:ui.button.click"), Sound.Source.MASTER, 0.8f, 1.2f));
         }
 
-        Component banner = MINI_MESSAGE.deserialize("""
-            <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
-                         <bold><gradient:#00C9FF:#92FE9D>NexGate Security</gradient></bold>
-            """);
-
-        Component prompt;
+        Component card;
         if (isRegistered) {
-            prompt = MINI_MESSAGE.deserialize(
-                    "  <gray>Account registered! Please sign in:</gray>\n" +
-                    "  <click:suggest_command:'/login '><hover:show_text:'<green>Click to suggest /login command'><gradient:#00F260:#0575E6><bold>[ 🔑 CLICK TO LOGIN ]</bold></gradient></hover></click> <dark_gray>or use <aqua>/login <password></aqua></dark_gray>\n"
+            card = MINI_MESSAGE.deserialize(
+                    "\n" +
+                    "<dark_gray>  ┌─ <gradient:#00C9FF:#92FE9D><bold>NEXGATE SECURITY</bold></gradient> <dark_gray>──────────────────────────┐</dark_gray>\n" +
+                    "<dark_gray>  │</dark_gray>  <white>Welcome back, <aqua><bold>" + player.getUsername() + "</bold></aqua>!</white>\n" +
+                    "<dark_gray>  │</dark_gray>  <gray>Please authenticate to access the network.</gray>\n" +
+                    "<dark_gray>  │</dark_gray>\n" +
+                    "<dark_gray>  │</dark_gray>  <click:suggest_command:'/login '><hover:show_text:'<gradient:#00C9FF:#92FE9D>Click to suggest /login</gradient>'><gradient:#00C9FF:#92FE9D><bold>[ 🔑 CLICK TO LOGIN ]</bold></gradient></hover></click> <dark_gray>or <yellow>/login &lt;pass&gt;</yellow></dark_gray>\n" +
+                    "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
             );
         } else {
-            prompt = MINI_MESSAGE.deserialize(
-                    "  <gray>New player detected! Create a password:</gray>\n" +
-                    "  <click:suggest_command:'/register '><hover:show_text:'<green>Click to suggest /register command'><gradient:#00C9FF:#92FE9D><bold>[ 📝 CLICK TO REGISTER ]</bold></gradient></hover></click> <dark_gray>or use <aqua>/register <pass> <confirm></aqua></dark_gray>\n"
+            card = MINI_MESSAGE.deserialize(
+                    "\n" +
+                    "<dark_gray>  ┌─ <gradient:#00C9FF:#92FE9D><bold>NEXGATE SECURITY</bold></gradient> <dark_gray>──────────────────────────┐</dark_gray>\n" +
+                    "<dark_gray>  │</dark_gray>  <white>Welcome to the server, <aqua><bold>" + player.getUsername() + "</bold></aqua>!</white>\n" +
+                    "<dark_gray>  │</dark_gray>  <gray>Protect your account by creating a secure password.</gray>\n" +
+                    "<dark_gray>  │</dark_gray>\n" +
+                    "<dark_gray>  │</dark_gray>  <click:suggest_command:'/register '><hover:show_text:'<gradient:#00C9FF:#92FE9D>Click to suggest /register</gradient>'><gradient:#00C9FF:#92FE9D><bold>[ 📝 CLICK TO REGISTER ]</bold></gradient></hover></click> <dark_gray>or <yellow>/register &lt;pass&gt; &lt;confirm&gt;</yellow></dark_gray>\n" +
+                    "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
             );
         }
 
-        Component footer = MINI_MESSAGE.deserialize(
-                "<gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>"
-        );
-
-        player.sendMessage(banner.append(prompt).append(footer));
+        player.sendMessage(card);
 
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#00C9FF:#92FE9D>NexGate</gradient></bold>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#00C9FF:#92FE9D>N E X G A T E</gradient></bold>");
             Component subTitle = MINI_MESSAGE.deserialize(isRegistered ?
-                    "<yellow>Use <gradient:#00F260:#0575E6><bold>/login <password></bold></gradient></yellow>" :
-                    "<yellow>Use <gradient:#00C9FF:#92FE9D><bold>/register <pass> <pass></bold></gradient></yellow>");
+                    "<gray>Please <aqua><bold>/login &lt;password&gt;</bold></aqua> to proceed</gray>" :
+                    "<gray>Please <aqua><bold>/register &lt;pass&gt; &lt;confirm&gt;</bold></aqua></gray>");
             player.showTitle(Title.title(mainTitle, subTitle,
                     Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
         }
@@ -260,26 +261,22 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:block.note_block.bell"), Sound.Source.MASTER, 1.0f, 1.0f));
         }
 
-        Component banner = MINI_MESSAGE.deserialize("""
-            <gradient:#FF512F:#DD2476>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
-                         <bold><gradient:#FF512F:#DD2476>Two-Factor Authentication</gradient></bold>
-            """);
-
-        Component prompt = MINI_MESSAGE.deserialize(
-                "  <gray>Two-factor authentication is active on this account:</gray>\n" +
-                "  <click:suggest_command:'/2fa verify '><hover:show_text:'<green>Click to enter 6-digit TOTP code'><gradient:#00F260:#0575E6><bold>[ 🛡 CLICK TO VERIFY 2FA ]</bold></gradient></hover></click> <dark_gray>or use <aqua>/2fa verify <code></aqua></dark_gray>\n" +
-                "  <dark_gray>Lost your authenticator? Use </dark_gray><yellow>/2fa recovery <backup-code></yellow>\n"
+        Component card = MINI_MESSAGE.deserialize(
+                "\n" +
+                "<dark_gray>  ┌─ <gradient:#FF512F:#DD2476><bold>TWO-FACTOR VERIFICATION</bold></gradient> <dark_gray>────────────────────┐</dark_gray>\n" +
+                "<dark_gray>  │</dark_gray>  <white>Security Check: <gold><bold>2FA is enabled</bold></gold></white>\n" +
+                "<dark_gray>  │</dark_gray>  <gray>Check your authenticator app for the 6-digit code.</gray>\n" +
+                "<dark_gray>  │</dark_gray>\n" +
+                "<dark_gray>  │</dark_gray>  <click:suggest_command:'/2fa verify '><hover:show_text:'<gradient:#FF512F:#DD2476>Click to enter TOTP code</gradient>'><gradient:#FF512F:#DD2476><bold>[ 🛡 CLICK TO VERIFY ]</bold></gradient></hover></click> <dark_gray>or <yellow>/2fa verify &lt;code&gt;</yellow></dark_gray>\n" +
+                "<dark_gray>  │</dark_gray>  <dark_gray>Lost access? Run <yellow>/2fa recovery &lt;key&gt;</yellow></dark_gray>\n" +
+                "<dark_gray>  └────────────────────────────────────────────────────────┘</dark_gray>\n"
         );
 
-        Component footer = MINI_MESSAGE.deserialize(
-                "<gradient:#FF512F:#DD2476>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>"
-        );
-
-        player.sendMessage(banner.append(prompt).append(footer));
+        player.sendMessage(card);
 
         if (configManager.isShowTitle()) {
             Component mainTitle = MINI_MESSAGE.deserialize("<bold><gradient:#FF512F:#DD2476>2FA Verification</gradient></bold>");
-            Component subTitle = MINI_MESSAGE.deserialize("<yellow>Use <gradient:#00F260:#0575E6><bold>/2fa verify <code></bold></gradient></yellow>");
+            Component subTitle = MINI_MESSAGE.deserialize("<gray>Enter code with <gold><bold>/2fa verify &lt;code&gt;</bold></gold></gray>");
             player.showTitle(Title.title(mainTitle, subTitle,
                     Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
         }
@@ -379,6 +376,7 @@ public class AuthManager {
                 player.hideBossBar(pending.bossBar);
             }
         }
+        player.sendActionBar(Component.empty());
     }
 
     public void stopTotpFlow(Player player) {
@@ -393,6 +391,7 @@ public class AuthManager {
                 player.hideBossBar(pending.bossBar);
             }
         }
+        player.sendActionBar(Component.empty());
     }
 
     public Set<UUID> getAuthenticatedUuids() {

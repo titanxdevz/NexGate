@@ -3,6 +3,7 @@ package com.nexgate.paper;
 import com.nexgate.paper.auth.PaperAuthManager;
 import com.nexgate.paper.command.PaperColorCommand;
 import com.nexgate.paper.config.PaperConfigManager;
+import com.nexgate.paper.limbo.LimboManager;
 import com.nexgate.paper.listener.AuthGateListener;
 import com.nexgate.paper.listener.PlayerJoinListener;
 import com.nexgate.paper.messaging.PaperPluginMessageManager;
@@ -16,6 +17,7 @@ public class NexGatePaperPlugin extends JavaPlugin {
     private PaperConfigManager configManager;
     private PaperAuthManager authManager;
     private PaperPluginMessageManager messageManager;
+    private LimboManager limboManager;
 
     @Override
     public void onEnable() {
@@ -27,6 +29,9 @@ public class NexGatePaperPlugin extends JavaPlugin {
         this.authManager = new PaperAuthManager(this, getSLF4JLogger(), configManager);
         this.messageManager = new PaperPluginMessageManager(this, getSLF4JLogger(), configManager, authManager);
         messageManager.register();
+
+        this.limboManager = new LimboManager(this, getSLF4JLogger(), configManager);
+        limboManager.initialize();
 
         // Register defense-in-depth security listeners
         getServer().getPluginManager().registerEvents(new AuthGateListener(this, authManager, configManager), this);
@@ -49,5 +54,21 @@ public class NexGatePaperPlugin extends JavaPlugin {
         if (messageManager != null) {
             messageManager.unregister();
         }
+    }
+
+    public PaperConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    public PaperAuthManager getAuthManager() {
+        return authManager;
+    }
+
+    public PaperPluginMessageManager getMessageManager() {
+        return messageManager;
+    }
+
+    public LimboManager getLimboManager() {
+        return limboManager;
     }
 }

@@ -133,6 +133,9 @@ public class PaperAuthManager {
         if (player == null || !player.isOnline()) return;
         player.removePotionEffect(PotionEffectType.BLINDNESS);
         player.removePotionEffect(PotionEffectType.SLOWNESS);
+        player.setWalkSpeed(0.2f);
+        player.setFlySpeed(0.1f);
+        player.sendActionBar(net.kyori.adventure.text.Component.empty());
     }
 
     public void hideUnauthenticated(Player player) {

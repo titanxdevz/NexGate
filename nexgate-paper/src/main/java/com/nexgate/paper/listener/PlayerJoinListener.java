@@ -28,11 +28,34 @@ public class PlayerJoinListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // Check if proxy sent perform.login ahead of join event (race condition defense)
+        // 1. Limbo cage positioning & vanilla join message suppression
+        if (configManager.isLimboCageEnabled()) {
+            plugin.getLimboManager().teleportToLimbo(player);
+            if (configManager.isSuppressJoinQuitMessages()) {
+                event.joinMessage(null);
+            }
+        }
+
+        // 2. Check if proxy sent perform.login ahead of join event (race condition defense)
         boolean consumed = authManager.checkAndConsumeQueuedSession(player);
         if (!consumed) {
             authManager.deauthenticate(player);
             plugin.getSLF4JLogger().debug("Player {} joined backend, unauthenticated by default (defense-in-depth)", player.getName());
+
+            // Query proxy immediately
+            plugin.getMessageManager().sendCheckAuth(player);
+
+            // Scheduled verification pulses (at 5 ticks and 15 ticks) in case proxy/network was transitioning
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline() && !authManager.isAuthenticated(player)) {
+                    plugin.getMessageManager().sendCheckAuth(player);
+                }
+            }, 5L);
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline() && !authManager.isAuthenticated(player)) {
+                    plugin.getMessageManager().sendCheckAuth(player);
+                }
+            }, 15L);
         } else {
             plugin.getSLF4JLogger().debug("Player {} joined backend, authenticated from queued proxy session", player.getName());
         }
@@ -40,6 +63,9 @@ public class PlayerJoinListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerQuit(PlayerQuitEvent event) {
+        if (configManager.isLimboCageEnabled() && configManager.isSuppressJoinQuitMessages()) {
+            event.quitMessage(null);
+        }
         authManager.deauthenticate(event.getPlayer());
     }
 }
