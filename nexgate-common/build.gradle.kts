@@ -8,16 +8,16 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.4")
     
     // Adventure API (provided by Velocity & Paper runtimes)
-    compileOnly("net.kyori:adventure-api:4.17.0")
-    compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
+    compileOnly("net.kyori:adventure-api:5.2.0")
+    compileOnly("net.kyori:adventure-text-minimessage:5.2.0")
     
     // For annotations
     compileOnly("org.jetbrains:annotations:26.0.1")
     
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("net.kyori:adventure-api:4.17.0")
-    testImplementation("net.kyori:adventure-text-minimessage:4.17.0")
+    testImplementation("net.kyori:adventure-api:5.2.0")
+    testImplementation("net.kyori:adventure-text-minimessage:5.2.0")
 }
 
 tasks.test {
