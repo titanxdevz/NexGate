@@ -11,7 +11,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
     implementation("de.mkammerer:argon2-jvm:2.11")
     implementation("com.zaxxer:HikariCP:5.1.0")
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.code.gson:gson:2.14.0")
     implementation("org.xerial:sqlite-jdbc:3.47.0.0")
     implementation("com.mysql:mysql-connector-j:9.1.0")
     implementation("org.postgresql:postgresql:42.7.4")
