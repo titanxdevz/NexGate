@@ -17,7 +17,8 @@ public enum MessageType {
     STATE_UPDATE("state.update", true),                // generic state update
     SYNC_SETTINGS("sync.settings", true),              // sync player color/style settings
     FORCE_LOGOUT("force.logout", false),               // force logout session
-    FORCE_DISCONNECT("force.disconnect", false);       // force disconnect backend entity
+    FORCE_DISCONNECT("force.disconnect", false),       // force disconnect backend entity
+    CHECK_AUTH("check.auth", false);                   // backend -> proxy: query player authentication state
 
     private final String id;
     private final boolean broadcast;
