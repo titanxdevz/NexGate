@@ -1,6 +1,7 @@
 package com.nexgate.velocity.listener;
 
 import com.nexgate.velocity.auth.AuthManager;
+import com.nexgate.velocity.auth.VelocityAuthService;
 import com.nexgate.velocity.config.ConfigManager;
 import com.nexgate.velocity.messaging.PluginMessageManager;
 import com.velocitypowered.api.event.PostOrder;
@@ -28,23 +29,26 @@ public class ServerListener {
     private final Object pluginInstance;
     private final ProxyServer server;
     private final Logger logger;
+    private final VelocityAuthService authService;
     private final AuthManager authManager;
     private final ConfigManager configManager;
     private final PluginMessageManager messageManager;
 
-    public ServerListener(Object pluginInstance, ProxyServer server, Logger logger, AuthManager authManager,
+    public ServerListener(Object pluginInstance, ProxyServer server, Logger logger,
+                          VelocityAuthService authService, AuthManager authManager,
                           ConfigManager configManager, PluginMessageManager messageManager) {
         this.pluginInstance = pluginInstance;
         this.server = server;
         this.logger = logger;
+        this.authService = authService;
         this.authManager = authManager;
         this.configManager = configManager;
         this.messageManager = messageManager;
     }
 
-    public ServerListener(ProxyServer server, Logger logger, AuthManager authManager,
-                          ConfigManager configManager, PluginMessageManager messageManager) {
-        this(null, server, logger, authManager, configManager, messageManager);
+    public ServerListener(ProxyServer server, Logger logger, VelocityAuthService authService,
+                          AuthManager authManager, ConfigManager configManager, PluginMessageManager messageManager) {
+        this(null, server, logger, authService, authManager, configManager, messageManager);
     }
 
     @Subscribe(order = PostOrder.FIRST)
@@ -55,6 +59,21 @@ public class ServerListener {
 
         if (!configManager.isRequireAuth()) {
             return;
+        }
+
+        // 1. Consume any pre-resolved session discovered in PreLogin
+        if (authService != null && !authManager.isAuthenticated(player)) {
+            com.nexgate.model.UserAuth preUser = authService.consumePreResolvedSession(player.getUsername().toLowerCase());
+            if (preUser != null) {
+                authManager.authenticate(player, preUser, preUser.isPremium());
+                String ip = player.getRemoteAddress().getAddress().getHostAddress();
+                player.sendMessage(MINI.deserialize(authService.getPrefix() +
+                        configManager.getConfig().messages.sessionRestored
+                                .replace("{player}", player.getUsername())
+                                .replace("{ip}", ip)));
+                authService.syncLoginToBackend(player, preUser.getMessageColor(), preUser.getMessageStyle());
+                logger.info("Restored valid active session for {} on PreConnect; routing to main lobby", player.getUsername());
+            }
         }
 
         boolean isAuthServer = configManager.getAuthServers().contains(targetName);
@@ -75,10 +94,11 @@ public class ServerListener {
         }
 
         if (isAuthenticated && isAuthServer) {
-            // Authenticated player trying to go to auth server: redirect to lobby
+            // Authenticated player trying to go to auth server: redirect to lobby immediately!
             String lobby = configManager.getTargetServer();
             if (lobby != null && !lobby.isEmpty()) {
                 server.getServer(lobby).ifPresent(lobbySrv -> {
+                    logger.info("Redirecting authenticated player {} directly to target server {}", player.getUsername(), lobby);
                     event.setResult(ServerPreConnectEvent.ServerResult.allowed(lobbySrv));
                 });
             }
@@ -89,6 +109,19 @@ public class ServerListener {
     public void onServerConnected(ServerConnectedEvent event) {
         Player player = event.getPlayer();
         RegisteredServer target = event.getServer();
+        String currentName = target.getServerInfo().getName();
+
+        // Safety fallback: If player is authenticated and connected to an auth server, REDIRECT TO LOBBY!
+        if (authManager.isAuthenticated(player) && configManager.getAuthServers().contains(currentName)) {
+            String lobby = configManager.getTargetServer();
+            if (lobby != null && !lobby.isEmpty() && !lobby.equalsIgnoreCase(currentName)) {
+                server.getServer(lobby).ifPresent(lobbySrv -> {
+                    logger.info("Redirecting authenticated player {} from auth server to lobby", player.getUsername());
+                    player.createConnectionRequest(lobbySrv).fireAndForget();
+                });
+            }
+            return;
+        }
 
         // If player is already authenticated, send HMAC signed perform.login to the backend
         if (authManager.isAuthenticated(player)) {

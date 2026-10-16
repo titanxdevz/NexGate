@@ -2,6 +2,7 @@ package com.nexgate.paper;
 
 import com.nexgate.paper.auth.PaperAuthManager;
 import com.nexgate.paper.command.PaperColorCommand;
+import com.nexgate.paper.command.PaperNexGateCommand;
 import com.nexgate.paper.config.PaperConfigManager;
 import com.nexgate.paper.limbo.LimboManager;
 import com.nexgate.paper.listener.AuthGateListener;
@@ -45,6 +46,23 @@ public class NexGatePaperPlugin extends JavaPlugin {
             colorCmd.setTabCompleter(executor);
         }
 
+        PaperNexGateCommand ngExecutor = new PaperNexGateCommand(this);
+        PluginCommand ngCmd = getCommand("nexgate");
+        if (ngCmd != null) {
+            ngCmd.setExecutor(ngExecutor);
+            ngCmd.setTabCompleter(ngExecutor);
+        }
+        PluginCommand setSpawnCmd = getCommand("setspawn");
+        if (setSpawnCmd != null) {
+            setSpawnCmd.setExecutor(ngExecutor);
+            setSpawnCmd.setTabCompleter(ngExecutor);
+        }
+        PluginCommand spawnCmd = getCommand("spawn");
+        if (spawnCmd != null) {
+            spawnCmd.setExecutor(ngExecutor);
+            spawnCmd.setTabCompleter(ngExecutor);
+        }
+
         getSLF4JLogger().info("NexGate Paper enabled successfully with strict gating, potion barriers, and chat styling!");
     }
 
@@ -70,6 +88,23 @@ public class NexGatePaperPlugin extends JavaPlugin {
 
     public LimboManager getLimboManager() {
         return limboManager;
+    }
+
+    public org.bukkit.Location getSpawnLocation() {
+        if (!configManager.isSpawnEnabled()) return null;
+        org.bukkit.World world = getServer().getWorld(configManager.getSpawnWorld());
+        if (world == null && !getServer().getWorlds().isEmpty()) {
+            world = getServer().getWorlds().get(0);
+        }
+        if (world == null) return null;
+        return new org.bukkit.Location(
+                world,
+                configManager.getSpawnX(),
+                configManager.getSpawnY(),
+                configManager.getSpawnZ(),
+                configManager.getSpawnYaw(),
+                configManager.getSpawnPitch()
+        );
     }
 
     @Override

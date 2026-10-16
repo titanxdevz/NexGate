@@ -28,11 +28,16 @@ public class PlayerJoinListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // 1. Limbo void setup & vanilla join message suppression
+        // 1. Limbo void setup & vanilla join message suppression, or lobby spawn positioning
         if (configManager.isLimboCageEnabled()) {
             plugin.getLimboManager().setupLimboPlayer(player);
             if (configManager.isSuppressJoinQuitMessages()) {
                 event.joinMessage(null);
+            }
+        } else if (configManager.isSpawnTeleportOnJoin()) {
+            org.bukkit.Location spawn = plugin.getSpawnLocation();
+            if (spawn != null) {
+                player.teleport(spawn);
             }
         }
 

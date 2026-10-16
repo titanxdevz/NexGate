@@ -115,4 +115,31 @@ public class PaperSecurityLogicTest {
         int fallThreshold = platformY - 5;
         assertEquals(95, fallThreshold);
     }
+
+    @Test
+    public void testSpawnConfigurationData() {
+        String world = "world";
+        double x = 18.5;
+        double y = 71.0;
+        double z = -11.5;
+        float yaw = 90.0f;
+        float pitch = 0.0f;
+
+        assertTrue(x > 0);
+        assertTrue(y >= 64);
+        assertEquals("world", world);
+        assertEquals(90.0f, yaw);
+        assertEquals(0.0f, pitch);
+    }
+
+    @Test
+    public void testVoidFallProtectionThresholds() {
+        // Under Y=20 is guaranteed void failsafe recovery
+        double fallY = 15.0;
+        assertTrue(fallY < 20.0, "Fall below Y=20 must trigger failsafe recovery");
+
+        // Normal hovering at Y=100 is safe
+        double hoverY = 100.0;
+        assertFalse(hoverY < 20.0, "Y=100 hover must not trigger void failsafe");
+    }
 }

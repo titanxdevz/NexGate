@@ -55,6 +55,28 @@ public class VelocityAuthService {
     // Temporary storage for in-progress TOTP setups: UUID -> Base32 Secret
     private final Map<UUID, String> pendingTotpSetups = new ConcurrentHashMap<>();
 
+    // Pre-resolved sessions discovered during PreLogin: username (lowercase) -> UserAuth
+    private final Map<String, UserAuth> preResolvedSessions = new ConcurrentHashMap<>();
+    private Object pluginInstance;
+
+    public void setPluginInstance(Object pluginInstance) {
+        this.pluginInstance = pluginInstance;
+    }
+
+    public void cachePreResolvedSession(String usernameLower, UserAuth user) {
+        if (usernameLower != null && user != null) {
+            preResolvedSessions.put(usernameLower, user);
+        }
+    }
+
+    public UserAuth getPreResolvedSession(String usernameLower) {
+        return usernameLower != null ? preResolvedSessions.get(usernameLower) : null;
+    }
+
+    public UserAuth consumePreResolvedSession(String usernameLower) {
+        return usernameLower != null ? preResolvedSessions.remove(usernameLower) : null;
+    }
+
     public VelocityAuthService(ProxyServer server, Logger logger, ConfigManager configManager,
                                AuthManager authManager, PluginMessageManager messageManager) {
         this.server = server;
@@ -739,19 +761,35 @@ public class VelocityAuthService {
         });
     }
 
-    private void maybeForwardToTarget(Player player) {
-        player.getCurrentServer().ifPresent(conn -> {
-            String currentName = conn.getServerInfo().getName();
-            if (configManager.getAuthServers().contains(currentName)) {
-                String target = configManager.getTargetServer();
-                if (target != null && !target.isEmpty() && !target.equalsIgnoreCase(currentName)) {
-                    server.getServer(target).ifPresent(targetSrv -> {
-                        logger.info("Forwarding authenticated player {} to target server {}", player.getUsername(), target);
-                        player.createConnectionRequest(targetSrv).fireAndForget();
-                    });
+    public void maybeForwardToTarget(Player player) {
+        if (player == null || !player.isActive()) return;
+
+        Runnable forward = () -> {
+            if (!player.isActive()) return;
+            player.getCurrentServer().ifPresent(conn -> {
+                String currentName = conn.getServerInfo().getName();
+                if (configManager.getAuthServers().contains(currentName)) {
+                    String target = configManager.getTargetServer();
+                    if (target != null && !target.isEmpty() && !target.equalsIgnoreCase(currentName)) {
+                        server.getServer(target).ifPresent(targetSrv -> {
+                            logger.info("Forwarding authenticated player {} to target server {}", player.getUsername(), target);
+                            player.createConnectionRequest(targetSrv).fireAndForget();
+                        });
+                    }
                 }
+            });
+        };
+
+        if (player.getCurrentServer().isPresent()) {
+            forward.run();
+        } else {
+            // Player is still connecting to initial server; schedule retries
+            if (pluginInstance != null) {
+                server.getScheduler().buildTask(pluginInstance, forward).delay(200, TimeUnit.MILLISECONDS).schedule();
+                server.getScheduler().buildTask(pluginInstance, forward).delay(600, TimeUnit.MILLISECONDS).schedule();
+                server.getScheduler().buildTask(pluginInstance, forward).delay(1200, TimeUnit.MILLISECONDS).schedule();
             }
-        });
+        }
     }
 
     private void playErrorSound(Player player) {

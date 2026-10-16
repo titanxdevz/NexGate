@@ -30,3 +30,16 @@ limbo-cage:
   lock-weather-clear: true
   disable-mob-spawning: true
   suppress-join-quit-messages: true
+
+# Configurable spawn and login area
+spawn:
+  enabled: true
+  world: "world"
+  x: 0.5
+  y: 100.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+  teleport-on-join: true
+  teleport-on-login: true
+

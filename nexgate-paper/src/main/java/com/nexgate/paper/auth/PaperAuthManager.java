@@ -49,11 +49,21 @@ public class PaperAuthManager {
         authenticatedPlayers.put(uuid, new PlayerSettings(color, style));
         proxySessionQueue.remove(uuid);
 
-        // Remove potion effects
+        // Remove potion effects and restore flight/gravity
         removeAuthRestrictions(player);
 
         // Make visible to other players
         showToEveryone(player);
+
+        // If configured, teleport to lobby spawn area on login
+        if (!configManager.isLimboCageEnabled() && configManager.isSpawnTeleportOnLogin()) {
+            if (plugin instanceof com.nexgate.paper.NexGatePaperPlugin ngPlugin) {
+                org.bukkit.Location spawn = ngPlugin.getSpawnLocation();
+                if (spawn != null) {
+                    player.teleport(spawn);
+                }
+            }
+        }
 
         logger.info("Player {} authenticated on Paper backend (color={})", player.getName(), color);
     }

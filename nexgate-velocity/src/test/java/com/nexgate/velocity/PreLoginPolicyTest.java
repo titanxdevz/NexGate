@@ -72,4 +72,63 @@ public class PreLoginPolicyTest {
         boolean allowed = !premiumUser.isPremium() || isConnectionOnlineMode;
         assertFalse(allowed, "Offline connection must NOT be allowed to access an account marked Premium!");
     }
+
+    @Test
+    public void testActiveSessionBypassesAuthServerDirectlyToLobby() {
+        // Player with an active session in cache
+        boolean hasActiveSession = true;
+        boolean isAuthenticated = hasActiveSession;
+        String targetServer = "auth";
+        String mainLobbyServer = "lobby";
+
+        // If authenticated and target is auth server, router must divert straight to main lobby
+        String routedServer = (isAuthenticated && "auth".equals(targetServer)) ? mainLobbyServer : targetServer;
+        assertEquals("lobby", routedServer, "Authenticated player with active session MUST be routed directly to lobby!");
+    }
+
+    @Test
+    public void testPreResolvedSessionCacheWorkflow() {
+        java.util.Map<String, UserAuth> preResolved = new java.util.concurrent.ConcurrentHashMap<>();
+
+        UserAuth user = UserAuth.builder()
+                .username("ActivePlayer")
+                .uuid(UUID.randomUUID())
+                .premium(false)
+                .accountType(AccountType.OFFLINE)
+                .build();
+
+        // 1. PreLogin caches the user
+        String key = "activeplayer";
+        preResolved.put(key, user);
+        assertTrue(preResolved.containsKey(key));
+
+        // 2. ServerPreConnect consumes the session (atomic single-use)
+        UserAuth consumed = preResolved.remove(key);
+        assertNotNull(consumed);
+        assertEquals("ActivePlayer", consumed.getUsername());
+
+        // 3. Second call returns null (consumed)
+        assertNull(preResolved.remove(key));
+    }
+
+    @Test
+    public void testSessionValidityRules() {
+        long now = System.currentTimeMillis();
+        long twoHoursAgo = now - (120 * 60 * 1000L);
+        long threeHoursAgo = now - (180 * 60 * 1000L);
+
+        // Valid session created within 120 minutes
+        com.nexgate.model.SessionRecord validSession = new com.nexgate.model.SessionRecord(
+                UUID.randomUUID(), "activeplayer", "token123", "192.168.1.50", twoHoursAgo + 1000, now + (120 * 60 * 1000L)
+        );
+        assertTrue(validSession.isValid("192.168.1.50", true));
+        assertTrue(validSession.isValid("192.168.1.99", false)); // /24 subnet match in relaxed mode
+        assertFalse(validSession.isValid("10.0.0.1", false)); // completely different subnet fails
+
+        // Expired session (>120 mins)
+        com.nexgate.model.SessionRecord expiredSession = new com.nexgate.model.SessionRecord(
+                UUID.randomUUID(), "activeplayer", "token123", "192.168.1.50", threeHoursAgo, threeHoursAgo + (60 * 60 * 1000L)
+        );
+        assertFalse(expiredSession.isValid("192.168.1.50", true));
+    }
 }

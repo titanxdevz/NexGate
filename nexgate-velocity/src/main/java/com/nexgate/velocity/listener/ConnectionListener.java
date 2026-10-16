@@ -133,6 +133,23 @@ public class ConnectionListener {
                             continuation.resume();
                             return;
                         }
+                        // Offline account: check if user has active valid session
+                        authService.getDatabaseManager().getSession(user.getUuid()).thenAccept(sessOpt -> {
+                            if (sessOpt.isPresent()) {
+                                com.nexgate.model.SessionRecord session = sessOpt.get();
+                                if (session.isValid(ip, configManager.isSessionStrictIp())) {
+                                    logger.info("Pre-resolved valid active session for {} in PreLogin (OFFLINE_AUTH)", username);
+                                    authService.cachePreResolvedSession(username.toLowerCase(), user);
+                                }
+                            }
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                            continuation.resume();
+                        }).exceptionally(ex -> {
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                            continuation.resume();
+                            return null;
+                        });
+                        return;
                     }
                     event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
                     continuation.resume();
@@ -186,9 +203,22 @@ public class ConnectionListener {
                             return;
                         }
 
-                        // Offline or Bedrock account
-                        event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
-                        continuation.resume();
+                        // Offline account: check if user has active valid session
+                        authService.getDatabaseManager().getSession(user.getUuid()).thenAccept(sessOpt -> {
+                            if (sessOpt.isPresent()) {
+                                com.nexgate.model.SessionRecord session = sessOpt.get();
+                                if (session.isValid(ip, configManager.isSessionStrictIp())) {
+                                    logger.info("Pre-resolved valid active session for {} in PreLogin", username);
+                                    authService.cachePreResolvedSession(username.toLowerCase(), user);
+                                }
+                            }
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                            continuation.resume();
+                        }).exceptionally(ex -> {
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                            continuation.resume();
+                            return null;
+                        });
                     } else {
                         // Unregistered user joining for the first time
                         if (isBedrock) {
@@ -269,6 +299,25 @@ public class ConnectionListener {
             return;
         }
 
+        // If player was already authenticated on ServerPreConnect (e.g. from pre-resolved session)
+        if (authManager.isAuthenticated(player)) {
+            authService.maybeForwardToTarget(player);
+            return;
+        }
+
+        // Check if pre-resolved session is waiting
+        UserAuth preUser = authService.consumePreResolvedSession(player.getUsername().toLowerCase());
+        if (preUser != null) {
+            authManager.authenticate(player, preUser, preUser.isPremium());
+            player.sendMessage(MINI.deserialize(authService.getPrefix() +
+                    configManager.getConfig().messages.sessionRestored
+                            .replace("{player}", player.getUsername())
+                            .replace("{ip}", ip)));
+            authService.syncLoginToBackend(player, preUser.getMessageColor(), preUser.getMessageStyle());
+            authService.maybeForwardToTarget(player);
+            return;
+        }
+
         // Player joined in OFFLINE mode:
         // CRITICAL DEFENSE: Disallow offline connections from accessing accounts registered as Premium!
         authService.getDatabaseManager().getUser(player.getUsername()).thenAccept(userOpt -> {
@@ -288,9 +337,11 @@ public class ConnectionListener {
 
             // Offline mode: Check if existing valid session can be restored automatically
             authService.tryRestoreSession(player).thenAccept(restored -> {
-                if (!restored) {
+                if (!restored && !authManager.isAuthenticated(player)) {
                     boolean isRegistered = userOpt.isPresent();
                     authManager.startAuthFlow(player, isRegistered);
+                } else if (restored) {
+                    authService.maybeForwardToTarget(player);
                 }
             });
         });

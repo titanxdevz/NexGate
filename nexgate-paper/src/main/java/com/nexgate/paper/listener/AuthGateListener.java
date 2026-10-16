@@ -24,6 +24,7 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -66,12 +67,14 @@ public class AuthGateListener implements Listener {
             Location to = event.getTo();
             if (to == null) return;
 
-            // Failsafe: if player somehow fell below Y=20, cleanly re-suspend at limbo spawn
-            if (to.getY() < 20.0) {
+            // Failsafe: if player somehow fell below Y=20 or min world height, cleanly re-suspend at spawn
+            if (to.getY() < 20.0 || to.getY() < player.getWorld().getMinHeight() + 5) {
+                Location spawn = plugin.getSpawnLocation();
+                if (spawn != null) {
+                    player.teleport(spawn);
+                }
                 if (configManager.isLimboCageEnabled()) {
                     plugin.getLimboManager().setupLimboPlayer(player);
-                } else {
-                    player.teleport(player.getWorld().getSpawnLocation());
                 }
                 return;
             }
@@ -240,9 +243,23 @@ public class AuthGateListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDamage(EntityDamageEvent event) {
-        // Godmode: Unauthenticated players neither take damage nor deal damage
-        if (event.getEntity() instanceof Player player && !authManager.isAuthenticated(player)) {
-            event.setCancelled(true);
+        // Absolute Immortality: Unauthenticated players or players in Limbo void cage NEVER take damage
+        if (event.getEntity() instanceof Player player) {
+            if (!authManager.isAuthenticated(player) || configManager.isLimboCageEnabled()) {
+                event.setCancelled(true);
+                player.setFireTicks(0);
+
+                // If void damage, immediately teleport back to spawn
+                if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
+                    Location spawn = plugin.getSpawnLocation();
+                    if (spawn != null) {
+                        player.teleport(spawn);
+                    }
+                    if (configManager.isLimboCageEnabled()) {
+                        plugin.getLimboManager().setupLimboPlayer(player);
+                    }
+                }
+            }
         }
     }
 
@@ -295,8 +312,48 @@ public class AuthGateListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onFoodLevelChange(FoodLevelChangeEvent event) {
-        if (event.getEntity() instanceof Player player && !authManager.isAuthenticated(player)) {
-            event.setCancelled(true);
+        if (event.getEntity() instanceof Player player) {
+            if (!authManager.isAuthenticated(player) || configManager.isLimboCageEnabled()) {
+                event.setCancelled(true);
+                player.setFoodLevel(20);
+                player.setSaturation(20.0f);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player player = event.getPlayer();
+        if (!authManager.isAuthenticated(player) || configManager.isLimboCageEnabled()) {
+            event.deathMessage(null);
+            event.setKeepInventory(true);
+            event.setKeepLevel(true);
+            event.getDrops().clear();
+            event.setDroppedExp(0);
+            player.spigot().respawn();
+            Location spawn = plugin.getSpawnLocation();
+            if (spawn != null) {
+                player.teleport(spawn);
+            }
+            if (configManager.isLimboCageEnabled()) {
+                plugin.getLimboManager().setupLimboPlayer(player);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        if (!authManager.isAuthenticated(player) || configManager.isLimboCageEnabled()) {
+            Location spawn = plugin.getSpawnLocation();
+            if (spawn != null) {
+                event.setRespawnLocation(spawn);
+            }
+            if (configManager.isLimboCageEnabled()) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    plugin.getLimboManager().setupLimboPlayer(player);
+                });
+            }
         }
     }
 

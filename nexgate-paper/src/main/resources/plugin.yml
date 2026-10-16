@@ -1,6 +1,7 @@
 name: NexGate
 version: 1.0.0-SNAPSHOT
 main: com.nexgate.paper.NexGatePaperPlugin
+load: STARTUP
 api-version: 1.21
 description: NexGate Paper backend companion for defense-in-depth authentication
 author: NexGate Team
@@ -13,3 +14,17 @@ commands:
     aliases: [msgcolor, chatcolor]
     permission: nexgate.color
     usage: /<command> [color|style|preview]
+  nexgate:
+    description: NexGate Paper backend administrative command
+    aliases: [ng, nex]
+    permission: nexgate.admin
+    usage: /<command> [setspawn|spawn|reload|help]
+  setspawn:
+    description: Set the spawn and login area for this server
+    aliases: [setlogin, setauthspawn]
+    permission: nexgate.admin
+    usage: /<command>
+  spawn:
+    description: Teleport to the configured server spawn
+    permission: nexgate.spawn
+    usage: /<command>

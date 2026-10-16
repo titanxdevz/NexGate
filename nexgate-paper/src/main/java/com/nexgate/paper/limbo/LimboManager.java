@@ -69,6 +69,8 @@ public class LimboManager {
     }
 
     public Location getSpawnLocation() {
+        Location configured = plugin.getSpawnLocation();
+        if (configured != null) return configured;
         World world = getLimboWorld();
         if (world == null) return null;
         int y = configManager.getLimboPlatformY();
