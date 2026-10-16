@@ -30,9 +30,22 @@ public class LogoutCommand implements SimpleCommand {
             return;
         }
 
+        // 1. Notify current backend server to deauthenticate
+        player.getCurrentServer().ifPresent(cur -> {
+            authService.getMessageManager().sendLogoutState(cur.getServer(), player.getUsername(), player.getUniqueId());
+        });
+
+        // 2. Invalidate session in database
         authService.getDatabaseManager().invalidateSession(player.getUniqueId());
+
+        // 3. Clear authenticated state on proxy
         authManager.logout(player);
-        player.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>You have been logged out.</yellow>"));
+        player.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>You have been safely logged out.</yellow>"));
+
+        // 4. Transfer player back to auth limbo server immediately
+        authService.transferToAuthServer(player);
+
+        // 5. Start auth flow
         authManager.startAuthFlow(player, true);
     }
 

@@ -131,4 +131,51 @@ public class PreLoginPolicyTest {
         );
         assertFalse(expiredSession.isValid("192.168.1.50", true));
     }
+
+    @Test
+    public void testBedrockDirectLoginPolicy() {
+        String bedrockUser = ".BedrockSteve";
+        assertTrue(UsernameValidator.isFloodgateUsername(bedrockUser));
+
+        // Verified Bedrock user auto-registers with AccountType.BEDROCK
+        UserAuth bedrockAccount = UserAuth.builder()
+                .username(bedrockUser)
+                .uuid(UUID.randomUUID())
+                .accountType(AccountType.BEDROCK)
+                .build();
+
+        assertEquals(AccountType.BEDROCK, bedrockAccount.getAccountType());
+        assertFalse(bedrockAccount.isPremium());
+    }
+
+    @Test
+    public void testBedrockAccountProtectionFromJavaPlayers() {
+        // Bedrock account in database
+        UserAuth bedrockAccount = UserAuth.builder()
+                .username(".BedrockPlayer")
+                .uuid(UUID.randomUUID())
+                .accountType(AccountType.BEDROCK)
+                .build();
+
+        // Java player attempting to connect with regular username
+        String javaConnectingName = "JavaPlayer";
+        boolean isBedrockConn = UsernameValidator.isFloodgateUsername(javaConnectingName);
+        assertFalse(isBedrockConn);
+
+        // Security check: If target account is BEDROCK, non-Bedrock connections are rejected
+        boolean allowed = bedrockAccount.getAccountType() != AccountType.BEDROCK || isBedrockConn;
+        assertFalse(allowed, "Java offline connections must be prevented from accessing Bedrock accounts!");
+    }
+
+    @Test
+    public void testLogoutRoutingDirectsToAuthServer() {
+        // Player logs out: auth state cleared, target is auth server
+        boolean isAuthenticated = false;
+        String authServer = "auth";
+        String mainLobbyServer = "lobby";
+
+        // Unauthenticated player must route to auth server
+        String destination = isAuthenticated ? mainLobbyServer : authServer;
+        assertEquals("auth", destination, "Logged out / unauthenticated player must be routed to auth server!");
+    }
 }

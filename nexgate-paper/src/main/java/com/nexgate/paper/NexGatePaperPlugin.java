@@ -37,6 +37,7 @@ public class NexGatePaperPlugin extends JavaPlugin {
         // Register defense-in-depth security listeners
         getServer().getPluginManager().registerEvents(new AuthGateListener(this, authManager, configManager), this);
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(this, authManager, configManager), this);
+        getServer().getPluginManager().registerEvents(new com.nexgate.paper.listener.PinPadListener(), this);
 
         // Register commands
         PluginCommand colorCmd = getCommand("color");
@@ -44,6 +45,12 @@ public class NexGatePaperPlugin extends JavaPlugin {
             PaperColorCommand executor = new PaperColorCommand(this, authManager);
             colorCmd.setExecutor(executor);
             colorCmd.setTabCompleter(executor);
+        }
+
+        com.nexgate.paper.command.PaperPinCommand pinExecutor = new com.nexgate.paper.command.PaperPinCommand(this);
+        PluginCommand pinCmd = getCommand("pin");
+        if (pinCmd != null) {
+            pinCmd.setExecutor(pinExecutor);
         }
 
         PaperNexGateCommand ngExecutor = new PaperNexGateCommand(this);

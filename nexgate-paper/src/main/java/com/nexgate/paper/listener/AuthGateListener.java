@@ -46,7 +46,8 @@ import java.util.UUID;
 public class AuthGateListener implements Listener {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
     private static final Set<String> ALLOWED_COMMANDS = Set.of(
-            "login", "l", "register", "reg", "2fa", "totp", "changepassword", "cp", "premium", "color", "msgcolor"
+            "login", "l", "register", "reg", "2fa", "totp", "changepassword", "cp", "premium", "color", "msgcolor",
+            "pin", "gui", "authgui"
     );
 
     private final NexGatePaperPlugin plugin;
@@ -93,7 +94,10 @@ public class AuthGateListener implements Listener {
 
         if (!authManager.isAuthenticated(player)) {
             event.setCancelled(true);
-            player.sendMessage(MINI.deserialize("<red>You must authenticate before chatting!</red>"));
+            player.sendMessage(MINI.deserialize("""
+                <red>⚠ <bold>CHAT LEAK BLOCKED:</bold> Your message was hidden to protect your password!</red>
+                <yellow>Authenticate safely: <click:suggest_command:'/login '><gold><bold>[ 🔑 Click to /login ]</bold></gold></click> or <click:run_command:'/pin'><aqua><bold>[ 🔢 Open PIN Pad ]</bold></aqua></click></yellow>
+                """));
             return;
         }
 
@@ -209,21 +213,27 @@ public class AuthGateListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (event.getPlayer() instanceof Player player && !authManager.isAuthenticated(player)) {
-            event.setCancelled(true);
+            if (!(event.getInventory().getHolder() instanceof com.nexgate.paper.gui.PinPadGui)) {
+                event.setCancelled(true);
+            }
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof Player player && !authManager.isAuthenticated(player)) {
-            event.setCancelled(true);
+            if (!(event.getInventory().getHolder() instanceof com.nexgate.paper.gui.PinPadGui)) {
+                event.setCancelled(true);
+            }
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onInventoryDrag(InventoryDragEvent event) {
         if (event.getWhoClicked() instanceof Player player && !authManager.isAuthenticated(player)) {
-            event.setCancelled(true);
+            if (!(event.getInventory().getHolder() instanceof com.nexgate.paper.gui.PinPadGui)) {
+                event.setCancelled(true);
+            }
         }
     }
 

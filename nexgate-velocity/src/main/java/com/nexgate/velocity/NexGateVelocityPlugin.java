@@ -122,6 +122,12 @@ public class NexGateVelocityPlugin {
                 .build();
         cmdMgr.register(totpMeta, new TotpCommand(authService, authManager));
 
+        // /pin
+        CommandMeta pinMeta = cmdMgr.metaBuilder("pin")
+                .plugin(this)
+                .build();
+        cmdMgr.register(pinMeta, new com.nexgate.velocity.command.PinCommand(authService, authManager));
+
         // /nexgate admin command
         CommandMeta adminMeta = cmdMgr.metaBuilder("nexgate")
                 .aliases("ng")

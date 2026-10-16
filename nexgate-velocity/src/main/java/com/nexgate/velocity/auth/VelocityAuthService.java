@@ -792,6 +792,89 @@ public class VelocityAuthService {
         }
     }
 
+    /**
+     * Transfers an unauthenticated or logged-out player back to the auth/limbo server.
+     */
+    public void transferToAuthServer(Player player) {
+        if (player == null || !player.isActive()) return;
+        List<String> authServers = configManager.getAuthServers();
+        if (!authServers.isEmpty()) {
+            String authName = authServers.get(0);
+            server.getServer(authName).ifPresentOrElse(authSrv -> {
+                logger.info("Transferring unauthenticated player {} to auth server {}", player.getUsername(), authName);
+                player.createConnectionRequest(authSrv).fireAndForget();
+            }, () -> {
+                logger.warn("Configured auth server '{}' not found!", authName);
+                player.disconnect(MINI.deserialize("<red>Authentication server unavailable.</red>"));
+            });
+        }
+    }
+
+    /**
+     * Direct auto-login and registration for verified Bedrock Edition (Floodgate) players.
+     */
+    public CompletableFuture<Void> handleBedrockAutoLogin(Player player) {
+        String username = player.getUsername();
+        String ip = player.getRemoteAddress().getAddress().getHostAddress();
+        UUID uuid = player.getUniqueId();
+
+        return databaseManager.getUser(username).thenCompose(userOpt -> {
+            if (userOpt.isPresent()) {
+                UserAuth user = userOpt.get();
+                if (user.isLocked()) {
+                    player.disconnect(MINI.deserialize("<red>Account suspended: " + (user.getLockReason() != null ? user.getLockReason() : "Contact administrator.") + "</red>"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                // If UUID changed, update to current Floodgate connection UUID
+                if (!uuid.equals(user.getUuid())) {
+                    databaseManager.updateUserUuid(username, uuid);
+                }
+
+                authManager.authenticate(player, user, false);
+                playSuccessSound(player);
+                player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().bedrock.verifiedWelcomeMessage));
+
+                createAndSaveSession(player);
+                syncLoginToBackend(player, user.getMessageColor(), user.getMessageStyle());
+                maybeForwardToTarget(player);
+
+                databaseManager.updateLastLogin(username, ip, System.currentTimeMillis());
+                databaseManager.recordAuditLog(username, "BEDROCK_LOGIN", username, ip, "Xbox Live auto-login verified");
+                return CompletableFuture.completedFuture(null);
+            }
+
+            // New Bedrock player: automatically register in database with AccountType.BEDROCK
+            String dummyHash = argon2Service.hashPassword(com.nexgate.crypto.HashingUtils.generateSecureToken(32));
+            UserAuth newUser = UserAuth.builder()
+                    .username(username)
+                    .usernameLower(username.toLowerCase())
+                    .uuid(uuid)
+                    .passwordHash(dummyHash)
+                    .ip(ip)
+                    .lastIp(ip)
+                    .regDate(System.currentTimeMillis())
+                    .lastLogin(System.currentTimeMillis())
+                    .premium(false)
+                    .accountType(AccountType.BEDROCK)
+                    .messageColor("WHITE")
+                    .messageStyle("DEFAULT")
+                    .build();
+
+            return databaseManager.registerUser(newUser).thenAccept(ok -> {
+                authManager.authenticate(player, newUser, false);
+                playSuccessSound(player);
+                player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().bedrock.verifiedWelcomeMessage));
+
+                createAndSaveSession(player);
+                syncLoginToBackend(player, newUser.getMessageColor(), newUser.getMessageStyle());
+                maybeForwardToTarget(player);
+
+                databaseManager.recordAuditLog(username, "BEDROCK_REGISTER", username, ip, "Xbox Live auto-registered");
+            });
+        });
+    }
+
     private void playErrorSound(Player player) {
         if (configManager.isPlaySounds()) {
             player.playSound(Sound.sound(Key.key("minecraft:block.note_block.bass"), Sound.Source.MASTER, 1.0f, 0.8f));
@@ -865,6 +948,14 @@ public class VelocityAuthService {
                 return true;
             });
         });
+    }
+
+    public com.nexgate.crypto.Argon2Service getArgon2Service() {
+        return argon2Service;
+    }
+
+    public com.nexgate.velocity.messaging.PluginMessageManager getMessageManager() {
+        return messageManager;
     }
 
     public void close() {

@@ -178,8 +178,10 @@ public class ServerListener {
         Player player = event.getPlayer();
         if (configManager.isRequireAuth() && !authManager.isAuthenticated(player)) {
             event.setResult(PlayerChatEvent.ChatResult.denied());
-            player.sendMessage(MINI.deserialize(configManager.getConfig().messages.prefix +
-                    "<red>Chat is disabled until you authenticate! Use <yellow>/login</yellow> or <yellow>/register</yellow></red>"));
+            player.sendMessage(MINI.deserialize("""
+                <red>⚠ <bold>CHAT LEAK BLOCKED:</bold> Your message was hidden to protect your password!</red>
+                <yellow>Authenticate safely: <click:suggest_command:'/login '><gold><bold>[ 🔑 Click to /login ]</bold></gold></click> or <click:run_command:'/pin'><aqua><bold>[ 🔢 Open PIN Pad ]</bold></aqua></click></yellow>
+                """));
         }
     }
 }

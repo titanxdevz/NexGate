@@ -146,9 +146,14 @@ public class ConfigManager {
         return config.premium.forceOnlineModeForPremium;
     }
 
+    public boolean isBedrockAutoLogin() {
+        return config.bedrock != null && config.bedrock.autoLogin;
+    }
+
     // Config POJO structure
     public static class VelocityConfig {
         public Auth auth = new Auth();
+        public BedrockConfig bedrock = new BedrockConfig();
         public Security security = new Security();
         public Premium premium = new Premium();
         public AntiBotConfig antibot = new AntiBotConfig();
@@ -156,6 +161,12 @@ public class ConfigManager {
         public Argon2Config argon2 = new Argon2Config();
         public Database database = new Database();
         public Messages messages = new Messages();
+    }
+
+    public static class BedrockConfig {
+        public boolean autoLogin = true;
+        public boolean allowFloodgatePrefix = true;
+        public String verifiedWelcomeMessage = "<gradient:#00C9FF:#92FE9D>✔ Bedrock Edition Verified!</gradient> <gray>Logged in automatically via Xbox Live identity.</gray>";
     }
 
     public static class Auth {

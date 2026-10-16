@@ -526,6 +526,21 @@ public class DatabaseManager {
         return updatePremiumStatus(username, premium, premiumUuid, premium ? AccountType.PREMIUM : AccountType.OFFLINE);
     }
 
+    public CompletableFuture<Void> updateUserUuid(String username, UUID uuid) {
+        String lower = username.toLowerCase();
+        return CompletableFuture.runAsync(() -> {
+            String sql = "UPDATE nexgate_users SET uuid = ? WHERE username_lower = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, uuid != null ? uuid.toString() : null);
+                ps.setString(2, lower);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                logger.error("Error updating UUID for " + username, e);
+            }
+        }, executorService);
+    }
+
     public CompletableFuture<Void> setPendingPremium(String username, boolean pending) {
         String lower = username.toLowerCase();
         return CompletableFuture.runAsync(() -> {

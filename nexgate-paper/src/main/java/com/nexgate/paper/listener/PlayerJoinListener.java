@@ -34,6 +34,13 @@ public class PlayerJoinListener implements Listener {
             if (configManager.isSuppressJoinQuitMessages()) {
                 event.joinMessage(null);
             }
+            if (configManager.isOpenPinPadOnJoin() && configManager.isPinPadEnabled()) {
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline() && !authManager.isAuthenticated(player)) {
+                        com.nexgate.paper.gui.PinPadGui.open(player);
+                    }
+                }, 5L);
+            }
         } else if (configManager.isSpawnTeleportOnJoin()) {
             org.bukkit.Location spawn = plugin.getSpawnLocation();
             if (spawn != null) {

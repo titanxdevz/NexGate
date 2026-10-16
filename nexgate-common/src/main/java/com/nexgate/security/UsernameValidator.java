@@ -11,8 +11,8 @@ public class UsernameValidator {
     // Standard Java Edition username: 3-16 alphanumeric or underscore characters
     private static final Pattern STANDARD_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{3,16}$");
 
-    // Floodgate / Bedrock pattern: allows leading prefix like '.' or '*' followed by 1-16 valid characters
-    private static final Pattern FLOODGATE_PATTERN = Pattern.compile("^[.*][a-zA-Z0-9_ ]{1,16}$");
+    // Floodgate / Bedrock pattern: allows leading prefix like '.', '*', or '+' followed by 1-20 valid characters
+    private static final Pattern FLOODGATE_PATTERN = Pattern.compile("^[.*+][a-zA-Z0-9_ ]{1,20}$");
 
     private UsernameValidator() {
     }

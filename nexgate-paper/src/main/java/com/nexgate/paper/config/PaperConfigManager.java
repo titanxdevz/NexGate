@@ -69,9 +69,23 @@ public class PaperConfigManager {
         this.spawnTeleportOnJoin = config.getBoolean("spawn.teleport-on-join", true);
         this.spawnTeleportOnLogin = config.getBoolean("spawn.teleport-on-login", true);
 
+        this.pinpadEnabled = config.getBoolean("pinpad.enabled", true);
+        this.pinpadOpenOnJoin = config.getBoolean("pinpad.open-on-join", false);
+
         if (hmacSecret.isEmpty()) {
             plugin.getSLF4JLogger().warn("hmac-secret is not configured in config.yml! Communication from Velocity will be rejected.");
         }
+    }
+
+    private boolean pinpadEnabled = true;
+    private boolean pinpadOpenOnJoin = false;
+
+    public boolean isPinPadEnabled() {
+        return pinpadEnabled;
+    }
+
+    public boolean isOpenPinPadOnJoin() {
+        return pinpadOpenOnJoin;
     }
 
     public String getHmacSecret() {

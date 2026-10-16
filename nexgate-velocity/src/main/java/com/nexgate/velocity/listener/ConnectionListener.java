@@ -1,5 +1,6 @@
 package com.nexgate.velocity.listener;
 
+import com.nexgate.model.AccountType;
 import com.nexgate.model.AuthMode;
 import com.nexgate.model.UserAuth;
 import com.nexgate.premium.MojangProfileChecker;
@@ -8,6 +9,7 @@ import com.nexgate.velocity.antibot.AntiBotManager;
 import com.nexgate.velocity.auth.AuthManager;
 import com.nexgate.velocity.auth.VelocityAuthService;
 import com.nexgate.velocity.config.ConfigManager;
+import java.util.UUID;
 import com.velocitypowered.api.event.EventTask;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
@@ -98,6 +100,64 @@ public class ConnectionListener {
         }
 
         boolean isBedrock = UsernameValidator.isFloodgateUsername(username);
+
+        // Bedrock Edition / Floodgate verified direct login: bypass password auth and route straight to lobby
+        if (isBedrock && configManager.isBedrockAutoLogin()) {
+            authService.getDatabaseManager().getUser(username).thenAccept(userOpt -> {
+                if (userOpt.isPresent()) {
+                    UserAuth user = userOpt.get();
+                    if (user.isLocked()) {
+                        String reason = user.getLockReason() != null ? user.getLockReason() : "Account suspended by administrator.";
+                        event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                                Component.text("Account is locked: " + reason).color(NamedTextColor.RED)
+                        ));
+                        continuation.resume();
+                        return;
+                    }
+                    logger.info("Pre-resolved verified Bedrock session for {} in PreLogin", username);
+                    authService.cachePreResolvedSession(username.toLowerCase(), user);
+                    event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                    continuation.resume();
+                } else {
+                    // Auto-register new Bedrock account
+                    String dummyHash = authService.getArgon2Service().hashPassword(com.nexgate.crypto.HashingUtils.generateSecureToken(32));
+                    UUID offlineUuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + username).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    UserAuth newUser = UserAuth.builder()
+                            .username(username)
+                            .usernameLower(username.toLowerCase())
+                            .uuid(offlineUuid)
+                            .passwordHash(dummyHash)
+                            .ip(ip)
+                            .lastIp(ip)
+                            .regDate(System.currentTimeMillis())
+                            .lastLogin(System.currentTimeMillis())
+                            .premium(false)
+                            .accountType(AccountType.BEDROCK)
+                            .messageColor("WHITE")
+                            .messageStyle("DEFAULT")
+                            .build();
+
+                    authService.getDatabaseManager().registerUser(newUser).thenAccept(success -> {
+                        logger.info("Auto-registered verified Bedrock account for {} in PreLogin", username);
+                        authService.cachePreResolvedSession(username.toLowerCase(), newUser);
+                        event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                        continuation.resume();
+                    }).exceptionally(ex -> {
+                        logger.error("Failed to auto-register Bedrock user {}", username, ex);
+                        event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                        continuation.resume();
+                        return null;
+                    });
+                }
+            }).exceptionally(ex -> {
+                logger.error("DB error in Bedrock PreLogin for {}", username, ex);
+                event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
+                continuation.resume();
+                return null;
+            });
+            return;
+        }
+
         AuthMode authMode = configManager.getAuthMode();
 
         // 4. Explicit AuthMode handling
@@ -118,6 +178,13 @@ public class ConnectionListener {
                 authService.getDatabaseManager().getUser(username).thenAccept(userOpt -> {
                     if (userOpt.isPresent()) {
                         UserAuth user = userOpt.get();
+                        if (user.getAccountType() == AccountType.BEDROCK && !isBedrock) {
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                                    Component.text("This account belongs to a verified Bedrock Edition player.").color(NamedTextColor.RED)
+                            ));
+                            continuation.resume();
+                            return;
+                        }
                         if (!UsernameValidator.isCaseMatch(username, user.getUsername())) {
                             event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
                                     Component.text("Username casing mismatch! Registered: " + user.getUsername()).color(NamedTextColor.RED)
@@ -166,6 +233,14 @@ public class ConnectionListener {
                 authService.getDatabaseManager().getUser(username).thenAccept(userOpt -> {
                     if (userOpt.isPresent()) {
                         UserAuth user = userOpt.get();
+
+                        if (user.getAccountType() == AccountType.BEDROCK && !isBedrock) {
+                            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                                    Component.text("This account belongs to a verified Bedrock Edition player.").color(NamedTextColor.RED)
+                            ));
+                            continuation.resume();
+                            return;
+                        }
 
                         // Enforce strict case match against registered identity
                         if (!UsernameValidator.isCaseMatch(username, user.getUsername())) {
@@ -308,13 +383,24 @@ public class ConnectionListener {
         // Check if pre-resolved session is waiting
         UserAuth preUser = authService.consumePreResolvedSession(player.getUsername().toLowerCase());
         if (preUser != null) {
+            if (preUser.getAccountType() == AccountType.BEDROCK && !player.getUniqueId().equals(preUser.getUuid())) {
+                authService.getDatabaseManager().updateUserUuid(player.getUsername(), player.getUniqueId());
+            }
             authManager.authenticate(player, preUser, preUser.isPremium());
-            player.sendMessage(MINI.deserialize(authService.getPrefix() +
+            String welcomeMsg = preUser.getAccountType() == AccountType.BEDROCK ?
+                    configManager.getConfig().bedrock.verifiedWelcomeMessage :
                     configManager.getConfig().messages.sessionRestored
                             .replace("{player}", player.getUsername())
-                            .replace("{ip}", ip)));
+                            .replace("{ip}", ip);
+            player.sendMessage(MINI.deserialize(authService.getPrefix() + welcomeMsg));
             authService.syncLoginToBackend(player, preUser.getMessageColor(), preUser.getMessageStyle());
             authService.maybeForwardToTarget(player);
+            return;
+        }
+
+        // Bedrock fallback direct login
+        if (UsernameValidator.isFloodgateUsername(player.getUsername()) && configManager.isBedrockAutoLogin()) {
+            authService.handleBedrockAutoLogin(player);
             return;
         }
 

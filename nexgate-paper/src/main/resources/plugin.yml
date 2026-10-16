@@ -28,3 +28,8 @@ commands:
     description: Teleport to the configured server spawn
     permission: nexgate.spawn
     usage: /<command>
+  pin:
+    description: Open the interactive security PIN-Pad GUI
+    aliases: [gui, authgui]
+    permission: nexgate.pin
+    usage: /<command> [digits]
