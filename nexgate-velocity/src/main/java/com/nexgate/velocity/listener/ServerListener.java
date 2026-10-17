@@ -151,6 +151,9 @@ public class ServerListener {
                 server.getScheduler().buildTask(pluginInstance, retrySend)
                         .delay(1200, TimeUnit.MILLISECONDS).schedule();
             }
+        } else {
+            // Re-sync bossbar so client receives fresh ADD packet after world/dimension transition
+            authManager.resyncBossBarOnServerSwitch(player);
         }
     }
 

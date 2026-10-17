@@ -274,6 +274,9 @@ public class AuthManager {
             stopAuthFlow(player);
             return;
         }
+        if (player.getCurrentServer().isEmpty()) {
+            return; // In transit between servers; wait until connection completes
+        }
 
         long elapsedSeconds = (System.currentTimeMillis() - pending.startTime) / 1000;
         long remaining = pending.maxSeconds - elapsedSeconds;
@@ -317,6 +320,9 @@ public class AuthManager {
         if (!player.isActive()) {
             stopTotpFlow(player);
             return;
+        }
+        if (player.getCurrentServer().isEmpty()) {
+            return; // In transit between servers; wait until connection completes
         }
 
         long elapsedSeconds = (System.currentTimeMillis() - pending.startTime) / 1000;
@@ -362,6 +368,21 @@ public class AuthManager {
         }
         player.clearTitle();
         player.sendActionBar(Component.empty());
+    }
+
+    public void resyncBossBarOnServerSwitch(Player player) {
+        if (player == null || !player.isActive()) return;
+        UUID uuid = player.getUniqueId();
+        PendingAuth pending = pendingAuths.get(uuid);
+        if (pending != null && pending.bossBar != null) {
+            player.hideBossBar(pending.bossBar);
+            player.showBossBar(pending.bossBar);
+        }
+        PendingTotpAuth pendingTotp = pendingTotpAuths.get(uuid);
+        if (pendingTotp != null && pendingTotp.bossBar != null) {
+            player.hideBossBar(pendingTotp.bossBar);
+            player.showBossBar(pendingTotp.bossBar);
+        }
     }
 
     public void stopTotpFlow(Player player) {

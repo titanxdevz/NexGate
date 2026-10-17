@@ -42,11 +42,8 @@ public class LogoutCommand implements SimpleCommand {
         authManager.logout(player);
         player.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>You have been safely logged out.</yellow>"));
 
-        // 4. Transfer player back to auth limbo server immediately
+        // 4. Transfer player back to auth limbo server immediately (auth flow starts on arrival)
         authService.transferToAuthServer(player);
-
-        // 5. Start auth flow
-        authManager.startAuthFlow(player, true);
     }
 
     @Override

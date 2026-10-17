@@ -800,9 +800,28 @@ public class VelocityAuthService {
         List<String> authServers = configManager.getAuthServers();
         if (!authServers.isEmpty()) {
             String authName = authServers.get(0);
+
+            // Check if player is already on the auth server
+            Optional<com.velocitypowered.api.proxy.ServerConnection> cur = player.getCurrentServer();
+            if (cur.isPresent() && cur.get().getServerInfo().getName().equalsIgnoreCase(authName)) {
+                databaseManager.getUser(player.getUsername()).thenAccept(userOpt -> {
+                    authManager.startAuthFlow(player, userOpt.isPresent());
+                });
+                return;
+            }
+
             server.getServer(authName).ifPresentOrElse(authSrv -> {
                 logger.info("Transferring unauthenticated player {} to auth server {}", player.getUsername(), authName);
-                player.createConnectionRequest(authSrv).fireAndForget();
+                player.createConnectionRequest(authSrv).connect().thenAccept(result -> {
+                    if (result.isSuccessful()) {
+                        logger.info("Player {} successfully transferred to auth server {}", player.getUsername(), authName);
+                        databaseManager.getUser(player.getUsername()).thenAccept(userOpt -> {
+                            authManager.startAuthFlow(player, userOpt.isPresent());
+                        });
+                    } else {
+                        logger.warn("Failed to transfer {} to auth server: {}", player.getUsername(), result.getReasonComponent());
+                    }
+                });
             }, () -> {
                 logger.warn("Configured auth server '{}' not found!", authName);
                 player.disconnect(MINI.deserialize("<red>Authentication server unavailable.</red>"));
