@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 📖 Documentation & Spec
-    url: https://github.com/titanxdevz/NexGate#readme
-    about: Please check the README and documentation before asking questions.
+  - name: Documentation
+    url: https://github.com/titanxdevz/NexGate/tree/main/docs
+    about: Review configuration guides and manuals before opening questions.

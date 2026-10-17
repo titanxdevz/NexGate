@@ -1,35 +1,27 @@
-name: Release NexGate
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       tag_name:
         description: 'Tag name (e.g. v1.0.0)'
         required: true
         default: 'v1.0.0'
-      is_prerelease:
-        description: 'Mark as pre-release?'
-        type: boolean
-        default: false
-      is_draft:
-        description: 'Draft release?'
-        type: boolean
-        default: false
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build & Publish GitHub Release
+    name: Build & Publish Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -45,101 +37,61 @@ jobs:
           VERSION="${TAG#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Extract Release Notes from CHANGELOG
+        id: changelog
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          python3 - << 'EOF'
+          import os, re
+
+          tag = os.environ.get("TAG", "")
+          version = tag.lstrip("v")
+          try:
+              with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+                  content = f.read()
+              pattern = rf'## \[?{re.escape(version)}\]?.*?\n(.*?)(?=\n## |\Z)'
+              match = re.search(pattern, content, re.DOTALL)
+              notes = match.group(1).strip() if match else f"Release {tag}"
+          except Exception as e:
+              notes = f"Release {tag}"
+
+          with open("release_notes.md", "w", encoding="utf-8") as out:
+              out.write(notes + "\n")
+          EOF
+          cat release_notes.md
+
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Gradle Cache
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@94baf225fe0a508e581a564467443d0e2379123b # v4.3.0
 
       - name: Build and Test Release JARs
         run: ./gradlew check shadowJar -Pversion=${{ steps.vars.outputs.version }} --no-daemon
 
-      - name: Prepare Release Directory & Checksums
-        id: assets
+      - name: Prepare Assets & Checksums
         run: |
           mkdir -p release-assets
           cp nexgate-velocity/build/libs/NexGate-Velocity-*.jar release-assets/
           cp nexgate-paper/build/libs/NexGate-Paper-*.jar release-assets/
           cp nexgate-common/build/libs/NexGate-Common-*.jar release-assets/
-
           cd release-assets
           sha256sum *.jar > checksums.sha256
           cd ..
           ls -la release-assets/
 
-      - name: Generate Release Notes Body
-        id: notes
-        run: |
-          cat << 'EOF' > release_body.md
-          ## 🚀 NexGate v${{ steps.vars.outputs.version }} Release
-
-          Welcome to the official release of **NexGate** — an enterprise authentication and defense-in-depth security suite for Velocity proxies and Paper backends.
-
-          ### 📦 Included Plugins
-          - **`NexGate-Velocity-${{ steps.vars.outputs.version }}.jar`**: Install on your **Velocity** proxy `plugins/` directory.
-          - **`NexGate-Paper-${{ steps.vars.outputs.version }}.jar`**: Install on your **Paper** backend servers `plugins/` directory for defense-in-depth protection and custom chat formatting.
-
-          ---
-
-          ### ✨ Key Highlights
-
-          #### 🎨 In-Game UI / UX
-          - **Interactive Clickable Prompts**: Click `[ 🔑 CLICK TO LOGIN ]` or `[ 📝 CLICK TO REGISTER ]` to quickly suggest commands.
-          - **Countdown BossBar**: Live progress bar dynamically changing color (Green ➔ Yellow ➔ Red) as authentication time winds down.
-          - **Branded Titles & Subtitles**: Gradient banners welcoming players and guiding them to authenticate.
-          - **Action Bar & Audio Cues**: Heartbeat warning bar and audio sound effects on login success, session restore, and incorrect password attempts.
-
-          #### 🌈 Personalized Message Colors & Gradients (`/color`)
-          - **Interactive Palette Menu**: Clickable in-game chat GUI for picking message colors and styles.
-          - **18 Solid Vibrant Colors & 7 Premium Gradients**: Sunset, Cyberpunk, Aurora, Ocean, Neon, Flame, Rainbow.
-          - **Custom Hex & Styles**: Supports direct hex codes (e.g. `#FF55AA`) and text formatting (Bold, Italic, Underlined).
-          - **Cross-Server Sync**: Saved in the database and automatically synced across servers.
-
-          #### 🛡️ Deep Enterprise Security
-          - **Argon2id Password Hashing**: State-of-the-art memory-hard cryptography resisting GPU and ASIC attacks.
-          - **Password Strength Policy**: Minimum/maximum length, username containment prevention, entropy checks, and common passwords blacklist.
-          - **Anti-Replay HMAC Signing**: Inter-server communication (`perform.login`) is signed with HMAC-SHA256, unique nonces, and 30-second sliding replay protection.
-          - **Rate Limiting & Lockouts**: Brute force protection with progressive lockouts and IP registration throttling.
-          - **Anti-Spoofing**: Username regex `^[a-zA-Z0-9_]{3,16}$` and strict casing validation.
-
-          #### 🔄 Deep Session System
-          - **Persistent Auto-Login**: Secure database-backed tokens allow players to reconnect without retyping their password.
-          - **Strict / Subnet Validation**: Configurable IP verification matching exact IP or `/24` subnet.
-
-          #### 🌐 Deep Mojang Premium Check (Hybrid Auth)
-          - **Official Mojang Verification**: Asynchronously queries Mojang session servers.
-          - **Proxy Online Mode**: Verified paid Minecraft accounts are forced into online mode encryption—zero password prompts and complete protection from name theft.
-          - **`/premium` Command**: Allows cracked accounts who bought the game to upgrade to official auto-login.
-
-          #### 🏰 Paper Companion Defense-in-Depth
-          - **Strict Interaction Gate**: Freezes movement, interactions, attacks, inventory clicks, and commands for unauthenticated players.
-          - **Godmode & Potion Barriers**: Unauthenticated players cannot take or deal damage, and receive blindness and slowness barriers.
-          - **Void Fallback**: Automatically teleports players falling into the void back to spawn safely.
-
-          ---
-
-          ### 🔒 Checksums (SHA-256)
-          ```
-          EOF
-          cat release-assets/checksums.sha256 >> release_body.md
-          echo '```' >> release_body.md
-
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9ec87453c603b55187037881 # v2.2.1
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: NexGate v${{ steps.vars.outputs.version }}
-          body_path: release_body.md
-          draft: ${{ github.event.inputs.is_draft || false }}
-          prerelease: ${{ github.event.inputs.is_prerelease || false }}
+          name: ${{ steps.vars.outputs.tag }}
+          body_path: release_notes.md
           files: |
             release-assets/*.jar
             release-assets/checksums.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false

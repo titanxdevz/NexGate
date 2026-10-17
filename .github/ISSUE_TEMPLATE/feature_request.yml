@@ -1,26 +1,26 @@
-name: "💡 Feature Request"
-description: Propose a new idea or improvement for NexGate
+name: "Feature Request"
+description: Propose an enhancement or feature for NexAuth / NexGate
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Have an idea for NexGate? Let us know what you would like to see!
+        Please outline the proposed capability and its use case.
 
   - type: textarea
     id: problem
     attributes:
-      label: Is your feature request related to a problem?
-      description: A clear description of the problem or limitation.
+      label: Problem Statement
+      description: What operational limitation or problem does this feature solve?
     validations:
       required: false
 
   - type: textarea
     id: solution
     attributes:
-      label: Proposed Solution / Feature
-      description: Describe what you want to happen and how it should work in-game or in config.
+      label: Proposed Solution
+      description: How should the feature behave from an operator, player, or API perspective?
     validations:
       required: true
 
@@ -28,6 +28,6 @@ body:
     id: alternatives
     attributes:
       label: Alternatives Considered
-      description: Any alternative solutions or features you've considered.
+      description: Any alternative implementations or workarounds evaluated.
     validations:
       required: false

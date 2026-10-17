@@ -1,18 +1,18 @@
-name: "🐛 Bug Report"
-description: File a bug report for NexGate
+name: "Bug Report"
+description: Report a bug or unexpected behavior in NexAuth / NexGate
 title: "[Bug]: "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting an issue! Please verify you are using the latest version of NexGate before submitting.
+        Please verify you are running the latest version before submitting.
 
   - type: input
     id: version
     attributes:
-      label: NexGate Version
-      description: The exact version you are running (run `/nexgate info`).
+      label: Plugin Version
+      description: The version you are running (check via `/nexgate info`).
       placeholder: "e.g. 1.0.0"
     validations:
       required: true
@@ -21,8 +21,8 @@ body:
     id: environment
     attributes:
       label: Server Environment
-      description: Velocity version, Paper version, and Java version.
-      placeholder: "e.g. Velocity 3.4.0-SNAPSHOT (build 450), Paper 1.21.1, Java 21"
+      description: Versions for Velocity proxy, backend Paper/Purpur, and Java runtime.
+      placeholder: "e.g. Velocity 3.4.0-SNAPSHOT, Paper 1.21.1, OpenJDK 21"
     validations:
       required: true
 
@@ -30,18 +30,19 @@ body:
     id: database
     attributes:
       label: Database Backend
-      description: Which database backend are you using?
+      description: Configured database engine.
       options:
         - "SQLite (nexgate.db)"
         - "MySQL / MariaDB"
+        - "PostgreSQL"
     validations:
       required: true
 
   - type: textarea
     id: description
     attributes:
-      label: Bug Description
-      description: A clear and concise description of what the bug is.
+      label: Description
+      description: Concise summary of the issue.
     validations:
       required: true
 
@@ -49,17 +50,17 @@ body:
     id: reproduction
     attributes:
       label: Steps to Reproduce
-      description: Steps to reproduce the behavior.
+      description: Step-by-step instructions to reproduce the problem.
       placeholder: |
-        1. Connect to Velocity proxy with account 'X'
-        2. Run command '...'
-        3. See error '...'
+        1. Connect with client ...
+        2. Execute command ...
+        3. Observe behavior ...
     validations:
       required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: Relevant Logs & Stack Traces
-      description: Please paste any console logs or errors (wrap in code blocks).
+      label: Logs and Stack Traces
+      description: Paste relevant console logs or stack traces.
       render: shell
