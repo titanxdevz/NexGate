@@ -64,7 +64,7 @@ public class PaperNexGateCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 plugin.getConfigManager().load();
-                sender.sendMessage(MINI.deserialize(PREFIX + "<green>✔ Paper companion configuration reloaded!</green>"));
+                sender.sendMessage(MINI.deserialize(PREFIX + "<green>Paper companion configuration reloaded!</green>"));
                 return true;
             }
             case "info" -> {
@@ -95,7 +95,7 @@ public class PaperNexGateCommand implements CommandExecutor, TabCompleter {
         Location loc = player.getLocation();
         plugin.getConfigManager().setSpawn(loc);
 
-        player.sendMessage(MINI.deserialize(PREFIX + "<green>✔ Server spawn & login area set to <white>"
+        player.sendMessage(MINI.deserialize(PREFIX + "<green>Server spawn & login area set to <white>"
                 + String.format("%.2f, %.2f, %.2f (yaw: %.1f, pitch: %.1f in '%s')",
                 loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch(), loc.getWorld().getName())
                 + "</white>!</green>"));
@@ -111,7 +111,7 @@ public class PaperNexGateCommand implements CommandExecutor, TabCompleter {
         Location spawn = plugin.getSpawnLocation();
         if (spawn != null) {
             player.teleport(spawn);
-            player.sendMessage(MINI.deserialize(PREFIX + "<green>✔ Teleported to server spawn.</green>"));
+            player.sendMessage(MINI.deserialize(PREFIX + "<green>Teleported to server spawn.</green>"));
         } else {
             player.teleport(player.getWorld().getSpawnLocation());
             player.sendMessage(MINI.deserialize(PREFIX + "<yellow>Teleported to world default spawn.</yellow>"));

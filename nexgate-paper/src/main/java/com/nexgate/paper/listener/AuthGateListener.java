@@ -94,10 +94,7 @@ public class AuthGateListener implements Listener {
 
         if (!authManager.isAuthenticated(player)) {
             event.setCancelled(true);
-            player.sendMessage(MINI.deserialize("""
-                <red>⚠ <bold>CHAT LEAK BLOCKED:</bold> Your message was hidden to protect your password!</red>
-                <yellow>Authenticate safely: <click:suggest_command:'/login '><gold><bold>[ 🔑 Click to /login ]</bold></gold></click> or <click:run_command:'/pin'><aqua><bold>[ 🔢 Open PIN Pad ]</bold></aqua></click></yellow>
-                """));
+            player.sendMessage(MINI.deserialize("<gold><bold>NEXGATE</bold></gold> <white>→</white> <red>You must authenticate first! Use <yellow>/login <password></yellow></red>"));
             return;
         }
 
@@ -128,7 +125,7 @@ public class AuthGateListener implements Listener {
                 return;
             }
             event.setCancelled(true);
-            event.getPlayer().sendMessage(MINI.deserialize("<red>You must authenticate first! Use <yellow>/login <password></yellow></red>"));
+            event.getPlayer().sendMessage(MINI.deserialize("<gold><bold>NEXGATE</bold></gold> <white>→</white> <red>You must authenticate first! Use <yellow>/login <password></yellow></red>"));
         }
     }
 

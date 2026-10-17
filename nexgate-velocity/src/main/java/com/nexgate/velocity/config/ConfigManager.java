@@ -166,7 +166,7 @@ public class ConfigManager {
     public static class BedrockConfig {
         public boolean autoLogin = true;
         public boolean allowFloodgatePrefix = true;
-        public String verifiedWelcomeMessage = "<gradient:#00C9FF:#92FE9D>✔ Bedrock Edition Verified!</gradient> <gray>Logged in automatically via Xbox Live identity.</gray>";
+        public String verifiedWelcomeMessage = "<green>Bedrock Edition Verified!</green> <gray>Logged in automatically via Xbox Live identity.</gray>";
     }
 
     public static class Auth {
@@ -258,10 +258,10 @@ public class ConfigManager {
         public String registerPrompt = "<white>Please, register using <gold>/register \\<password> \\<repeat password></gold></white>";
         public String loginPrompt = "<white>Please use <gold>/login \\<password></gold>, you have {attempts} attempts.</white>";
         public String alreadyLoggedIn = "<yellow>You are already logged in!</yellow>";
-        public String registerSuccess = "<green>✔ Registration successful! Welcome to the server.</green>";
-        public String loginSuccess = "<green>✔ Login successful! Welcome back.</green>";
-        public String sessionRestored = "<green>✔ Welcome back, <aqua>{player}</aqua>! Session restored.</green>";
-        public String premiumAutoLogin = "<gold><bold>✔ Mojang Premium verified!</bold></gold> <gray>Logged in securely via official session server.</gray>";
+        public String registerSuccess = "<green>Registration successful! Welcome to the server.</green>";
+        public String loginSuccess = "<green>Login successful! Welcome back.</green>";
+        public String sessionRestored = "<green>Welcome back, <aqua>{player}</aqua>! Session restored.</green>";
+        public String premiumAutoLogin = "<gold><bold>Mojang Premium verified!</bold></gold> <gray>Logged in securely via official session server.</gray>";
         public String wrongPassword = "<red>Incorrect password! Attempts remaining: {attempts}</red>";
         public String accountLocked = "<red>Too many failed attempts! Account locked for {seconds}s.</red>";
         public String ipRateLimited = "<red>Too many connection attempts from this IP. Please wait.</red>";

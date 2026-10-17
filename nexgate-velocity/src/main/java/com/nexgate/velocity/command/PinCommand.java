@@ -40,9 +40,8 @@ public class PinCommand implements SimpleCommand {
             return;
         }
 
-        // If player didn't provide digits, remind them of click-to-fill or backend GUI
         player.sendMessage(MINI.deserialize(authService.getPrefix() +
-                "<yellow>Opening PIN Pad... Or click here to type: <click:suggest_command:'/login '><gold><bold>[ 🔑 Click to /login ]</bold></gold></click></yellow>"));
+                "<yellow>To authenticate, use: <gold><click:suggest_command:'/login '>/login <password></click></gold></yellow>"));
     }
 
     @Override

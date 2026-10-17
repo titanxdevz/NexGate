@@ -73,17 +73,17 @@ public class PinPadGui implements InventoryHolder {
 
         // Action Buttons:
         // Slot 18: Backspace / Clear
-        inventory.setItem(18, createItem(Material.RED_STAINED_GLASS_PANE, "<red><bold>⌫ Backspace / Clear</bold></red>",
+        inventory.setItem(18, createItem(Material.RED_STAINED_GLASS_PANE, "<red><bold>Backspace / Clear</bold></red>",
                 List.of("<gray>Click to delete the last entered digit.</gray>")));
 
         // Slot 26: Submit PIN
-        inventory.setItem(26, createItem(Material.EMERALD, "<green><bold>✔ Submit PIN</bold></green>",
+        inventory.setItem(26, createItem(Material.EMERALD, "<green><bold>Submit PIN</bold></green>",
                 List.of("<gray>Click to log in with your entered PIN.</gray>")));
     }
 
     public void updateDisplayItem() {
         StringBuilder buf = ACTIVE_PINS.computeIfAbsent(player.getUniqueId(), k -> new StringBuilder());
-        String masked = buf.length() == 0 ? "<dark_gray>_ _ _ _</dark_gray>" : "<yellow>" + "• ".repeat(buf.length()).trim() + "</yellow>";
+        String masked = buf.length() == 0 ? "<dark_gray>_ _ _ _</dark_gray>" : "<yellow>" + "* ".repeat(buf.length()).trim() + "</yellow>";
 
         ItemStack star = createItem(Material.NETHER_STAR, "<gold><bold>Virtual PIN Display</bold></gold>", List.of(
                 "<gray>Current PIN: </gray>" + masked,

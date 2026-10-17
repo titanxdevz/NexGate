@@ -162,13 +162,14 @@ public class ServerListener {
                 // Whitelist auth commands
                 if (cmd.startsWith("login") || cmd.startsWith("register") ||
                     cmd.startsWith("l ") || cmd.startsWith("reg ") ||
-                    cmd.equals("l") || cmd.equals("reg")) {
+                    cmd.equals("l") || cmd.equals("reg") ||
+                    cmd.startsWith("2fa") || cmd.startsWith("pin")) {
                     return;
                 }
 
                 event.setResult(CommandExecuteEvent.CommandResult.denied());
                 player.sendMessage(MINI.deserialize(configManager.getConfig().messages.prefix +
-                        "<red>You must authenticate first! Use <yellow>/login</yellow> or <yellow>/register</yellow></red>"));
+                        "<red>You must authenticate first! Use <yellow>/login <password></yellow></red>"));
             }
         }
     }
@@ -178,10 +179,8 @@ public class ServerListener {
         Player player = event.getPlayer();
         if (configManager.isRequireAuth() && !authManager.isAuthenticated(player)) {
             event.setResult(PlayerChatEvent.ChatResult.denied());
-            player.sendMessage(MINI.deserialize("""
-                <red>⚠ <bold>CHAT LEAK BLOCKED:</bold> Your message was hidden to protect your password!</red>
-                <yellow>Authenticate safely: <click:suggest_command:'/login '><gold><bold>[ 🔑 Click to /login ]</bold></gold></click> or <click:run_command:'/pin'><aqua><bold>[ 🔢 Open PIN Pad ]</bold></aqua></click></yellow>
-                """));
+            player.sendMessage(MINI.deserialize(configManager.getConfig().messages.prefix +
+                    "<red>You must authenticate first! Use <yellow><click:suggest_command:'/login '>/login <password></click></yellow></red>"));
         }
     }
 }

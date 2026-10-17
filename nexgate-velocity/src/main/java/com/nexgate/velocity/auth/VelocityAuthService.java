@@ -381,7 +381,7 @@ public class VelocityAuthService {
         totpRateLimiter.reset(userKey);
         authManager.stopTotpFlow(player);
         authManager.authenticate(player, pending.user, pending.user.isPremium());
-        player.sendMessage(MINI.deserialize(getPrefix() + "<green>✔ Two-Factor Authentication verified! Welcome back.</green>"));
+        player.sendMessage(MINI.deserialize(getPrefix() + "<green>Two-Factor Authentication verified! Welcome back.</green>"));
 
         createAndSaveSession(player);
         syncLoginToBackend(player, pending.user.getMessageColor(), pending.user.getMessageStyle());
@@ -428,7 +428,7 @@ public class VelocityAuthService {
         authManager.authenticate(player, pending.user, pending.user.isPremium());
 
         player.sendMessage(MINI.deserialize(getPrefix() +
-                "<green>✔ Recovery code accepted! <yellow>" + storedHashes.size() + " recovery codes remaining.</yellow></green>"));
+                "<green>Recovery code accepted! <yellow>" + storedHashes.size() + " recovery codes remaining.</yellow></green>"));
 
         createAndSaveSession(player);
         syncLoginToBackend(player, pending.user.getMessageColor(), pending.user.getMessageStyle());
@@ -498,7 +498,7 @@ public class VelocityAuthService {
 
             player.sendMessage(MINI.deserialize("""
                 <gradient:#00C9FF:#92FE9D>━━━━━━━━━━ [ 2FA Successfully Enabled! ] ━━━━━━━━━━</gradient>
-                <green>✔ Two-factor authentication is now active on your account!</green>
+                <green>Two-factor authentication is now active on your account!</green>
                 <yellow><bold>IMPORTANT: Save these single-use recovery codes in a safe place!</bold></yellow>
                 <gray>If you lose your phone, you can use these to recover access:</gray>
                 %s<dark_gray>Each code can only be used once.</dark_gray>
@@ -575,7 +575,7 @@ public class VelocityAuthService {
                     return databaseManager.updatePassword(username, newHash).thenAccept(ok -> {
                         if (ok) {
                             playSuccessSound(player);
-                            player.sendMessage(MINI.deserialize(getPrefix() + "<green>✔ Password changed successfully! Other active sessions were revoked.</green>"));
+                            player.sendMessage(MINI.deserialize(getPrefix() + "<green>Password changed successfully! Other active sessions were revoked.</green>"));
 
                             // Invalidate all existing sessions and create a fresh one
                             databaseManager.invalidateSession(player.getUniqueId());
@@ -664,7 +664,7 @@ public class VelocityAuthService {
             if (result.exists()) {
                 databaseManager.setPendingPremium(player.getUsername(), true).thenRun(() -> {
                     player.sendMessage(MINI.deserialize(getPrefix() + """
-                        <gradient:#00C9FF:#92FE9D><bold>✔ Official Mojang Account Found!</bold></gradient>
+                        <gradient:#00C9FF:#92FE9D><bold>Official Mojang Account Found!</bold></gradient>
                         <gray>Mojang UUID: <aqua>%s</aqua></gray>
                         <yellow><bold>To complete verification and enable passwordless auto-login:</bold></yellow>
                         <gray>1. Disconnect from the server.</gray>

@@ -117,7 +117,7 @@ public class AuthManager {
         // Show welcome title
         if (configManager.isShowTitle()) {
             Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
-            Component subtitle = MINI_MESSAGE.deserialize("<green>✔ Authenticated! Welcome, <white>" + player.getUsername() + "</white></green>");
+            Component subtitle = MINI_MESSAGE.deserialize("<green>Authenticated! Welcome, <white>" + player.getUsername() + "</white></green>");
             player.showTitle(Title.title(mainTitle, subtitle,
                     Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(300))));
         }
@@ -223,38 +223,24 @@ public class AuthManager {
         Component msg;
         if (isRegistered) {
             int maxAttempts = configManager.getRateLimitAccountMax();
-            msg = MINI_MESSAGE.deserialize("""
-                <gradient:#00C9FF:#92FE9D>━━━━━━━━━ [ NexGate Authentication ] ━━━━━━━━━</gradient>
-                <gray>Welcome back, <white><bold>%s</bold></white>!</gray>
-                <gray>Please authenticate to access the network.</gray>
-                
-                <click:suggest_command:'/login '><hover:show_text:'<green>Click to pre-fill /login into chat safely!\n<gray>Prevents accidentally leaking your password in public chat.</gray></green>'><gold><bold>[ 🔑 CLICK TO LOGIN ]</bold></gold></hover></click>   <click:run_command:'/pin'><hover:show_text:'<aqua>Click to open the interactive Virtual PIN-Pad GUI!</aqua>'><aqua><bold>[ 🔢 OPEN PIN-PAD ]</bold></aqua></hover></click>
-                
-                <dark_gray>💡 Attempts remaining: %d | Tip: Never share your password</dark_gray>
-                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
-                """.formatted(player.getUsername(), maxAttempts));
+            msg = MINI_MESSAGE.deserialize(
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>Please use <gold><click:suggest_command:'/login '><hover:show_text:'<yellow>Click to suggest /login'>/login \\<password></hover></click></gold>, you have <gold>" + maxAttempts + "</gold> attempts.</white>"
+            );
         } else {
-            msg = MINI_MESSAGE.deserialize("""
-                <gradient:#00C9FF:#92FE9D>━━━━━━━━━ [ NexGate Registration ] ━━━━━━━━━</gradient>
-                <gray>Welcome to the server, <white><bold>%s</bold></white>!</gray>
-                <gray>Please create a password to secure your account.</gray>
-                
-                <click:suggest_command:'/register '><hover:show_text:'<green>Click to pre-fill /register into chat safely!\n<gray>Format: /register <password> <confirmPassword></gray></green>'><gold><bold>[ ✨ CLICK TO REGISTER ]</bold></gold></hover></click>   <click:run_command:'/pin'><hover:show_text:'<aqua>Click to open the interactive Virtual PIN-Pad GUI!</aqua>'><aqua><bold>[ 🔢 OPEN PIN-PAD ]</bold></aqua></hover></click>
-                
-                <dark_gray>💡 Format: /register <password> <confirmPassword></dark_gray>
-                <gradient:#00C9FF:#92FE9D>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
-                """.formatted(player.getUsername()));
+            msg = MINI_MESSAGE.deserialize(
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>Please, register using <gold><click:suggest_command:'/register '><hover:show_text:'<yellow>Click to suggest /register'>/register \\<password> \\<repeat password></hover></click></gold></white>"
+            );
         }
 
         player.sendMessage(msg);
 
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<gradient:#00C9FF:#92FE9D><bold>NEXGATE</bold></gradient>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
             Component subTitle = MINI_MESSAGE.deserialize(isRegistered ?
-                    "<white>Please enter your password to continue</white>" :
-                    "<white>Please register an account to play</white>");
+                    "<white>Use <gold>/login \\<password></gold> to login</white>" :
+                    "<white>Please use <gold>/register \\<password></gold></white>");
             player.showTitle(Title.title(mainTitle, subTitle,
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(400))));
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(10), Duration.ofMillis(200))));
         }
     }
 
@@ -265,23 +251,17 @@ public class AuthManager {
             player.playSound(Sound.sound(Key.key("minecraft:block.note_block.bell"), Sound.Source.MASTER, 1.0f, 1.0f));
         }
 
-        Component msg = MINI_MESSAGE.deserialize("""
-            <gradient:#FF512F:#DD2476>━━━━━━━━━ [ 2FA Authentication ] ━━━━━━━━━</gradient>
-            <gray>Two-factor authentication is active on this account.</gray>
-            
-            <click:suggest_command:'/2fa verify '><hover:show_text:'<green>Click to pre-fill /2fa verify</green>'><gold><bold>[ 🔒 CLICK TO ENTER 2FA CODE ]</bold></gold></hover></click>
-            
-            <dark_gray>💡 Open your Authenticator app (Google Authenticator / Authy)</dark_gray>
-            <gradient:#FF512F:#DD2476>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</gradient>
-            """);
+        Component msg = MINI_MESSAGE.deserialize(
+                "<red><bold>NEXGATE</bold></red> <white>→</white> <white>Please enter your 2FA code: <gold><click:suggest_command:'/2fa verify '><hover:show_text:'<yellow>Click to suggest /2fa verify'>/2fa verify \\<code></hover></click></gold></white>"
+        );
 
         player.sendMessage(msg);
 
         if (configManager.isShowTitle()) {
-            Component mainTitle = MINI_MESSAGE.deserialize("<gradient:#FF512F:#DD2476><bold>2FA REQUIRED</bold></gradient>");
-            Component subTitle = MINI_MESSAGE.deserialize("<white>Enter 6-digit code from your authenticator app</white>");
+            Component mainTitle = MINI_MESSAGE.deserialize("<red><bold>NEXGATE</bold></red>");
+            Component subTitle = MINI_MESSAGE.deserialize("<white>Use <gold>/2fa verify \\<code></gold> to verify</white>");
             player.showTitle(Title.title(mainTitle, subTitle,
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(400))));
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(10), Duration.ofMillis(200))));
         }
     }
 
@@ -309,17 +289,22 @@ public class AuthManager {
             pending.bossBar.progress(progress);
             pending.bossBar.color(remaining <= 15 ? BossBar.Color.RED : BossBar.Color.YELLOW);
             pending.bossBar.name(MINI_MESSAGE.deserialize(
-                    "<gradient:#00C9FF:#92FE9D><bold>NEXGATE</bold></gradient> <gray>•</gray> <white>Please authenticate <gray>(<aqua>" + remaining + "s</aqua>)</gray></white>"
+                    "<gold><bold>NEXGATE</bold></gold> <white>→</white> <white>You have <gold><bold>" + remaining + "</bold></gold> seconds left to log in.</white>"
             ));
         }
 
-        // Clean action bar reminder instead of giant screen-covering titles
-        player.sendActionBar(MINI_MESSAGE.deserialize(pending.isRegistered ?
-                "<yellow>Authenticate: <gold>/login <password></gold> <dark_gray>(</dark_gray><aqua>" + remaining + "s</aqua><dark_gray>)</dark_gray></yellow>" :
-                "<yellow>Register: <gold>/register <password></gold> <dark_gray>(</dark_gray><aqua>" + remaining + "s</aqua><dark_gray>)</dark_gray></yellow>"));
+        // Keep center title active on screen
+        if (configManager.isShowTitle() && elapsedSeconds % 4 == 0) {
+            Component mainTitle = MINI_MESSAGE.deserialize("<gold><bold>NEXGATE</bold></gold>");
+            Component subTitle = MINI_MESSAGE.deserialize(pending.isRegistered ?
+                    "<white>Use <gold>/login \\<password></gold> to login</white>" :
+                    "<white>Please use <gold>/register \\<password></gold></white>");
+            player.showTitle(Title.title(mainTitle, subTitle,
+                    Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(5), Duration.ofMillis(200))));
+        }
 
-        // Periodically resend chat prompt every 25s
-        if (elapsedSeconds > 0 && elapsedSeconds % 25 == 0) {
+        // Periodically resend chat prompt
+        if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
             sendAuthPrompt(player, pending.isRegistered);
         }
     }

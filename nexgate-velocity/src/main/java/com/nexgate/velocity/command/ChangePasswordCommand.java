@@ -63,7 +63,7 @@ public class ChangePasswordCommand implements SimpleCommand {
             String newHash = HashingUtils.hashPassword(newPass);
             authService.getDatabaseManager().updatePassword(player.getUsername(), newHash).thenAccept(ok -> {
                 if (ok) {
-                    player.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>✔ Password updated successfully!</green>"));
+                    player.sendMessage(MINI.deserialize(authService.getPrefix() + "<green>Password updated successfully!</green>"));
                 } else {
                     player.sendMessage(MINI.deserialize(authService.getPrefix() + "<red>Failed to update password.</red>"));
                 }
