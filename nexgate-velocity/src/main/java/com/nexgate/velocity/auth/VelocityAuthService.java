@@ -49,6 +49,7 @@ public class VelocityAuthService {
     private final RateLimiter ipRateLimiter;
     private final RateLimiter accountRateLimiter;
     private final RateLimiter totpRateLimiter;
+    private final RateLimiter ipFailedKicksLimiter;
     private final PasswordValidator passwordValidator;
     private final MojangProfileChecker mojangChecker;
 
@@ -133,6 +134,12 @@ public class VelocityAuthService {
                 cfg.totp.lockoutDurationSeconds
         );
 
+        this.ipFailedKicksLimiter = new RateLimiter(
+                configManager.getMaxFailedKicksBeforeIpCooldown(),
+                configManager.getIpCooldownMinutes() * 60,
+                10_000
+        );
+
         this.passwordValidator = new PasswordValidator(
                 cfg.security.passwordMinLength,
                 cfg.security.passwordMaxLength,
@@ -173,6 +180,36 @@ public class VelocityAuthService {
 
     public String getPrefix() {
         return configManager.getConfig().messages.prefix;
+    }
+
+    public void recordFailedKickForIp(String ip) {
+        if (!configManager.isIpCooldownEnabled()) return;
+        String key = RateLimiter.normalizeIpKey(ip);
+        boolean allowed = ipFailedKicksLimiter.tryAcquire(key);
+        if (!allowed) {
+            long duration = configManager.getIpCooldownMinutes() * 60;
+            ipFailedKicksLimiter.lockout(key, duration);
+            logger.warn("IP {} cooled down for {}m after reaching {} failed login kicks",
+                    key, configManager.getIpCooldownMinutes(), configManager.getMaxFailedKicksBeforeIpCooldown());
+            databaseManager.recordAuditLog("security", "IP_COOLDOWN_ACTIVATED", key, ip,
+                    "Cooled down for " + configManager.getIpCooldownMinutes() + " minutes");
+        }
+    }
+
+    public boolean isIpCooledDown(String ip) {
+        if (!configManager.isIpCooldownEnabled()) return false;
+        String key = RateLimiter.normalizeIpKey(ip);
+        return ipFailedKicksLimiter.isLockedOut(key);
+    }
+
+    public long getIpCooldownRemainingSeconds(String ip) {
+        String key = RateLimiter.normalizeIpKey(ip);
+        return ipFailedKicksLimiter.getRemainingLockTimeSeconds(key);
+    }
+
+    public void resetIpFailedKicks(String ip) {
+        String key = RateLimiter.normalizeIpKey(ip);
+        ipFailedKicksLimiter.reset(key);
     }
 
     /**

@@ -130,6 +130,18 @@ public class ConfigManager {
         return config.security.lockoutDurationSeconds;
     }
 
+    public boolean isIpCooldownEnabled() {
+        return config.security.ipCooldownEnabled;
+    }
+
+    public int getMaxFailedKicksBeforeIpCooldown() {
+        return config.security.maxFailedKicksBeforeIpCooldown;
+    }
+
+    public long getIpCooldownMinutes() {
+        return config.security.ipCooldownMinutes;
+    }
+
     public boolean isRequireAuth() {
         return config.auth.requireAuth;
     }
@@ -188,6 +200,9 @@ public class ConfigManager {
         public RateLimit rateLimitAccount = new RateLimit(5, 300);
         public int maxAccountsPerIp = 3;
         public long lockoutDurationSeconds = 300;
+        public boolean ipCooldownEnabled = true;
+        public int maxFailedKicksBeforeIpCooldown = 3;
+        public long ipCooldownMinutes = 5;
         public int passwordMinLength = 6;
         public int passwordMaxLength = 64;
         public boolean requireNumbers = false;
@@ -265,6 +280,7 @@ public class ConfigManager {
         public String wrongPassword = "<red>Incorrect password! Attempts remaining: <yellow><bold>{attempts}</bold></yellow></red>";
         public String accountLocked = "<red>Too many failed attempts! Account locked for {seconds}s.</red>";
         public String maxFailedAttemptsKick = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Too many incorrect login attempts!</red>\n<gray>You have been disconnected to protect account security.</gray>\n<gray>Please reconnect and verify your password.</gray>";
+        public String ipCooldownKick = "<gold><bold>NEXGATE SECURITY</bold></gold>\n\n<red>IP Temporarily Cooled Down</red>\n<gray>Too many failed login attempts originated from your network.</gray>\n<gray>Please wait <yellow><bold>{time}</bold></yellow> before reconnecting.</gray>";
         public String ipRateLimited = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Connection Rate Limited</red>\n<gray>Too many join attempts from your IP address. Please wait a moment.</gray>";
         public String maxAccountsReached = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Account Limit Reached</red>\n<gray>Maximum registered accounts reached for your IP address ({max}).</gray>";
         public String passwordMismatch = "<red>Passwords do not match!</red>";
