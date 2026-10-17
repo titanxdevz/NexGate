@@ -42,10 +42,33 @@ public class ConfigManager {
             if (config == null) {
                 config = new VelocityConfig();
                 saveDefault();
+            } else {
+                sanitizeConfig();
             }
         } catch (IOException e) {
             logger.error("Failed to load config, falling back to defaults", e);
             config = new VelocityConfig();
+        }
+    }
+
+    private void sanitizeConfig() {
+        if (config.security == null) {
+            config.security = new Security();
+        }
+        if (config.security.maxFailedKicksBeforeIpCooldown <= 0) {
+            config.security.maxFailedKicksBeforeIpCooldown = 3;
+        }
+        if (config.security.ipCooldownMinutes <= 0) {
+            config.security.ipCooldownMinutes = 5;
+        }
+        if (config.messages == null) {
+            config.messages = new Messages();
+        }
+        if (config.messages.ipCooldownKick == null || config.messages.ipCooldownKick.isBlank()) {
+            config.messages.ipCooldownKick = "<gold><bold>NEXGATE SECURITY</bold></gold>\n\n<red>IP Temporarily Cooled Down</red>\n<gray>Too many failed login attempts originated from your network.</gray>\n<gray>Please wait <yellow><bold>{time}</bold></yellow> before reconnecting.</gray>";
+        }
+        if (config.messages.maxFailedAttemptsKick == null || config.messages.maxFailedAttemptsKick.isBlank()) {
+            config.messages.maxFailedAttemptsKick = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Too many incorrect login attempts!</red>\n<gray>You have been disconnected to protect account security.</gray>\n<gray>Please reconnect and verify your password.</gray>";
         }
     }
 
@@ -131,15 +154,17 @@ public class ConfigManager {
     }
 
     public boolean isIpCooldownEnabled() {
-        return config.security.ipCooldownEnabled;
+        return config != null && config.security != null && config.security.ipCooldownEnabled;
     }
 
     public int getMaxFailedKicksBeforeIpCooldown() {
-        return config.security.maxFailedKicksBeforeIpCooldown;
+        return (config != null && config.security != null && config.security.maxFailedKicksBeforeIpCooldown > 0)
+                ? config.security.maxFailedKicksBeforeIpCooldown : 3;
     }
 
     public long getIpCooldownMinutes() {
-        return config.security.ipCooldownMinutes;
+        return (config != null && config.security != null && config.security.ipCooldownMinutes > 0)
+                ? config.security.ipCooldownMinutes : 5;
     }
 
     public boolean isRequireAuth() {

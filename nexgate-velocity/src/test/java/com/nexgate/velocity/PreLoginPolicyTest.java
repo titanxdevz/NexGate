@@ -178,4 +178,37 @@ public class PreLoginPolicyTest {
         String destination = isAuthenticated ? mainLobbyServer : authServer;
         assertEquals("auth", destination, "Logged out / unauthenticated player must be routed to auth server!");
     }
+
+    @Test
+    public void testIpCooldownPolicy() {
+        com.nexgate.ratelimit.RateLimiter ipLimiter = new com.nexgate.ratelimit.RateLimiter(3, 1800, 100);
+        String testIp = "192.168.1.100";
+        String key = com.nexgate.ratelimit.RateLimiter.normalizeIpKey(testIp);
+
+        assertFalse(ipLimiter.isLockedOut(key));
+
+        // 1st failed kick
+        ipLimiter.tryAcquire(key);
+        assertFalse(ipLimiter.getAttempts(key) >= 3);
+
+        // 2nd failed kick
+        ipLimiter.tryAcquire(key);
+        assertFalse(ipLimiter.getAttempts(key) >= 3);
+
+        // 3rd failed kick reaches threshold
+        ipLimiter.tryAcquire(key);
+        assertTrue(ipLimiter.getAttempts(key) >= 3);
+
+        // Cooldown triggers: lock out for 300 seconds and reset attempts
+        ipLimiter.lockout(key, 300);
+        ipLimiter.resetAttempts(key);
+
+        assertTrue(ipLimiter.isLockedOut(key));
+        assertTrue(ipLimiter.getRemainingLockTimeSeconds(key) > 0);
+        assertEquals(0, ipLimiter.getAttempts(key));
+
+        // Successful authentication resets entire cooldown & bucket
+        ipLimiter.reset(key);
+        assertFalse(ipLimiter.isLockedOut(key));
+    }
 }

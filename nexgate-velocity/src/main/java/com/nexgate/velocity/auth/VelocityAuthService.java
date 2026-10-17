@@ -136,7 +136,7 @@ public class VelocityAuthService {
 
         this.ipFailedKicksLimiter = new RateLimiter(
                 configManager.getMaxFailedKicksBeforeIpCooldown(),
-                configManager.getIpCooldownMinutes() * 60,
+                Math.max(1800, configManager.getIpCooldownMinutes() * 60 * 2),
                 10_000
         );
 
@@ -174,6 +174,10 @@ public class VelocityAuthService {
         return totpRateLimiter;
     }
 
+    public RateLimiter getIpFailedKicksLimiter() {
+        return ipFailedKicksLimiter;
+    }
+
     public MojangProfileChecker getMojangChecker() {
         return mojangChecker;
     }
@@ -185,12 +189,15 @@ public class VelocityAuthService {
     public void recordFailedKickForIp(String ip) {
         if (!configManager.isIpCooldownEnabled()) return;
         String key = RateLimiter.normalizeIpKey(ip);
-        boolean allowed = ipFailedKicksLimiter.tryAcquire(key);
-        if (!allowed) {
+        ipFailedKicksLimiter.tryAcquire(key);
+        int attempts = ipFailedKicksLimiter.getAttempts(key);
+        int max = configManager.getMaxFailedKicksBeforeIpCooldown();
+        if (attempts >= max) {
             long duration = configManager.getIpCooldownMinutes() * 60;
             ipFailedKicksLimiter.lockout(key, duration);
+            ipFailedKicksLimiter.resetAttempts(key);
             logger.warn("IP {} cooled down for {}m after reaching {} failed login kicks",
-                    key, configManager.getIpCooldownMinutes(), configManager.getMaxFailedKicksBeforeIpCooldown());
+                    key, configManager.getIpCooldownMinutes(), attempts);
             databaseManager.recordAuditLog("security", "IP_COOLDOWN_ACTIVATED", key, ip,
                     "Cooled down for " + configManager.getIpCooldownMinutes() + " minutes");
         }
@@ -275,6 +282,7 @@ public class VelocityAuthService {
                             authManager.authenticate(player, newUser, false);
                             player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.registerSuccess));
 
+                            resetIpFailedKicks(ip);
                             createAndSaveSession(player);
                             syncLoginToBackend(player, newUser.getMessageColor(), newUser.getMessageStyle());
                             maybeForwardToTarget(player);
@@ -329,6 +337,7 @@ public class VelocityAuthService {
                         // Exceeded maximum attempts: kick user immediately, never lock account across server
                         databaseManager.recordAuditLog("security", "FAILED_LOGIN_KICK", username, ip, "Exceeded maximum failed password attempts");
                         accountRateLimiter.reset(userKey);
+                        recordFailedKickForIp(ip);
                         player.disconnect(MINI.deserialize(configManager.getConfig().messages.maxFailedAttemptsKick));
                         return;
                     }
@@ -342,6 +351,7 @@ public class VelocityAuthService {
                 // Password matches! Reset lockout counters
                 accountRateLimiter.reset(userKey);
                 ipRateLimiter.reset(ip);
+                resetIpFailedKicks(ip);
 
                 // Check if hash needs parameter rehash
                 if (argon2Service.needsRehash(user.getPasswordHash())) {
@@ -394,9 +404,11 @@ public class VelocityAuthService {
             playErrorSound(player);
             boolean acquired = totpRateLimiter.tryAcquire(userKey);
             if (!acquired) {
+                String ip = player.getRemoteAddress().getAddress().getHostAddress();
                 databaseManager.recordAuditLog("security", "FAILED_TOTP_KICK", player.getUsername(),
-                        player.getRemoteAddress().getAddress().getHostAddress(), "Exceeded maximum failed 2FA attempts");
+                        ip, "Exceeded maximum failed 2FA attempts");
                 totpRateLimiter.reset(userKey);
+                recordFailedKickForIp(ip);
                 player.disconnect(MINI.deserialize(configManager.getConfig().messages.totpFailedAttemptsKick));
                 return;
             }
@@ -409,6 +421,7 @@ public class VelocityAuthService {
 
         // 2FA Verified!
         totpRateLimiter.reset(userKey);
+        resetIpFailedKicks(player.getRemoteAddress().getAddress().getHostAddress());
         authManager.stopTotpFlow(player);
         authManager.authenticate(player, pending.user, pending.user.isPremium());
         player.sendMessage(MINI.deserialize(getPrefix() + "<green>Two-Factor Authentication verified! Welcome back.</green>"));
@@ -671,6 +684,7 @@ public class VelocityAuthService {
             }
 
             authManager.authenticate(player, user, true);
+            resetIpFailedKicks(ip);
             player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().messages.premiumAutoLogin));
 
             createAndSaveSession(player);
@@ -737,6 +751,7 @@ public class VelocityAuthService {
                 }
 
                 authManager.authenticate(player, user, user != null && user.isPremium());
+                resetIpFailedKicks(ip);
 
                 player.sendMessage(MINI.deserialize(getPrefix() +
                         configManager.getConfig().messages.sessionRestored
@@ -881,6 +896,7 @@ public class VelocityAuthService {
                 }
 
                 authManager.authenticate(player, user, false);
+                resetIpFailedKicks(ip);
                 playSuccessSound(player);
                 player.sendMessage(MINI.deserialize(getPrefix() + configManager.getConfig().bedrock.verifiedWelcomeMessage));
 

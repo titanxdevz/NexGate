@@ -80,7 +80,22 @@ public class ConnectionListener {
             return;
         }
 
-        // 2. IP rate limiter check
+        // 2. IP cooldown check (repeated failed login kicks)
+        if (configManager.isIpCooldownEnabled() && authService.isIpCooledDown(ip)) {
+            long remainingSecs = authService.getIpCooldownRemainingSeconds(ip);
+            long m = remainingSecs / 60;
+            long s = remainingSecs % 60;
+            String timeDisplay = m > 0 ? (m + "m " + s + "s") : (s + "s");
+            String msg = configManager.getConfig().messages.ipCooldownKick
+                    .replace("{time}", timeDisplay)
+                    .replace("{minutes}", String.valueOf(m))
+                    .replace("{seconds}", String.valueOf(remainingSecs));
+            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(MINI.deserialize(msg)));
+            continuation.resume();
+            return;
+        }
+
+        // 3. IP rate limiter check
         if (!authService.getIpRateLimiter().tryAcquire(ip)) {
             event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
                     MINI.deserialize(configManager.getConfig().messages.ipRateLimited)

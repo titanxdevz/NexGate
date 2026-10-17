@@ -131,6 +131,12 @@ public class RateLimiter {
         }
     }
 
+    public synchronized void resetAttempts(String key) {
+        if (key != null) {
+            buckets.remove(key);
+        }
+    }
+
     public synchronized int getAttempts(String key) {
         if (key == null) return 0;
         RateLimitBucket bucket = buckets.get(key);
