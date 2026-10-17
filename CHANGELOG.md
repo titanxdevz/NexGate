@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proxy online-mode encryption enforcement for verified accounts (`forceOnlineMode()`) preventing name theft and bypassing passwords.
   - `/premium` migration command for players upgrading to paid Minecraft accounts.
 - **Backend Defense-in-Depth (`nexgate-paper`)**:
-  - Comprehensive event gating: blocks movement, interactions, attacks, inventory clicks, item drops/pickups, and commands.
+  - Complete event gating: blocks movement, interactions, attacks, inventory clicks, item drops/pickups, and commands.
   - Godmode: unauthenticated players neither take nor deal damage.
   - Potion barriers: applies blindness and slowness level 255; removed immediately on login.
   - Ghosting: hides unauthenticated players from other online players.
