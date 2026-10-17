@@ -40,7 +40,7 @@ public class LogoutCommand implements SimpleCommand {
 
         // 3. Clear authenticated state on proxy
         authManager.logout(player);
-        player.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>You have been safely logged out.</yellow>"));
+        player.sendMessage(MINI.deserialize(authService.getPrefix() + "<yellow>You have been safely logged out. Returning to authentication...</yellow>"));
 
         // 4. Transfer player back to auth limbo server immediately (auth flow starts on arrival)
         authService.transferToAuthServer(player);

@@ -159,6 +159,14 @@ public class VelocityAuthService {
         return ipRateLimiter;
     }
 
+    public RateLimiter getAccountRateLimiter() {
+        return accountRateLimiter;
+    }
+
+    public RateLimiter getTotpRateLimiter() {
+        return totpRateLimiter;
+    }
+
     public MojangProfileChecker getMojangChecker() {
         return mojangChecker;
     }
@@ -258,15 +266,6 @@ public class VelocityAuthService {
         String userKey = username.toLowerCase();
         String ip = player.getRemoteAddress().getAddress().getHostAddress();
 
-        // Check rate limiter lockouts
-        if (accountRateLimiter.isLockedOut(userKey)) {
-            long remaining = accountRateLimiter.getRemainingLockTimeSeconds(userKey);
-            playErrorSound(player);
-            player.sendMessage(MINI.deserialize(getPrefix() +
-                    configManager.getConfig().messages.accountLocked.replace("{seconds}", String.valueOf(remaining))));
-            return CompletableFuture.completedFuture(null);
-        }
-
         return databaseManager.getUser(username).thenCompose(userOpt -> {
             if (userOpt.isEmpty()) {
                 playErrorSound(player);
@@ -290,16 +289,16 @@ public class VelocityAuthService {
                     playErrorSound(player);
                     boolean acquired = accountRateLimiter.tryAcquire(userKey);
                     if (!acquired) {
-                        accountRateLimiter.lockout(userKey, configManager.getLockoutDurationSeconds());
-                        long secs = configManager.getLockoutDurationSeconds();
-                        player.sendMessage(MINI.deserialize(getPrefix() +
-                                configManager.getConfig().messages.accountLocked.replace("{seconds}", String.valueOf(secs))));
-                        databaseManager.recordAuditLog("system", "ACCOUNT_LOCKOUT", username, ip, "Too many wrong password attempts");
-                    } else {
-                        int remaining = configManager.getRateLimitAccountMax() - accountRateLimiter.getAttempts(userKey);
-                        player.sendMessage(MINI.deserialize(getPrefix() +
-                                configManager.getConfig().messages.wrongPassword.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
+                        // Exceeded maximum attempts: kick user immediately, never lock account across server
+                        databaseManager.recordAuditLog("security", "FAILED_LOGIN_KICK", username, ip, "Exceeded maximum failed password attempts");
+                        accountRateLimiter.reset(userKey);
+                        player.disconnect(MINI.deserialize(configManager.getConfig().messages.maxFailedAttemptsKick));
+                        return;
                     }
+
+                    int remaining = configManager.getRateLimitAccountMax() - accountRateLimiter.getAttempts(userKey);
+                    player.sendMessage(MINI.deserialize(getPrefix() +
+                            configManager.getConfig().messages.wrongPassword.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
                     return;
                 }
 
@@ -350,13 +349,6 @@ public class VelocityAuthService {
         AuthManager.PendingTotpAuth pending = pendingOpt.get();
         String userKey = player.getUsername().toLowerCase();
 
-        if (totpRateLimiter.isLockedOut(userKey)) {
-            long remaining = totpRateLimiter.getRemainingLockTimeSeconds(userKey);
-            player.sendMessage(MINI.deserialize(getPrefix() +
-                    configManager.getConfig().messages.totpLocked.replace("{seconds}", String.valueOf(remaining))));
-            return;
-        }
-
         boolean valid = TotpUtils.verifyCode(
                 pending.user.getTotpSecret(), code, configManager.getConfig().totp.windowSteps
         );
@@ -365,15 +357,16 @@ public class VelocityAuthService {
             playErrorSound(player);
             boolean acquired = totpRateLimiter.tryAcquire(userKey);
             if (!acquired) {
-                totpRateLimiter.lockout(userKey, configManager.getConfig().totp.lockoutDurationSeconds);
-                long secs = configManager.getConfig().totp.lockoutDurationSeconds;
-                player.sendMessage(MINI.deserialize(getPrefix() +
-                        configManager.getConfig().messages.totpLocked.replace("{seconds}", String.valueOf(secs))));
-            } else {
-                int remaining = configManager.getConfig().totp.maxAttempts - totpRateLimiter.getAttempts(userKey);
-                player.sendMessage(MINI.deserialize(getPrefix() +
-                        configManager.getConfig().messages.totpCodeInvalid.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
+                databaseManager.recordAuditLog("security", "FAILED_TOTP_KICK", player.getUsername(),
+                        player.getRemoteAddress().getAddress().getHostAddress(), "Exceeded maximum failed 2FA attempts");
+                totpRateLimiter.reset(userKey);
+                player.disconnect(MINI.deserialize(configManager.getConfig().messages.totpFailedAttemptsKick));
+                return;
             }
+
+            int remaining = configManager.getConfig().totp.maxAttempts - totpRateLimiter.getAttempts(userKey);
+            player.sendMessage(MINI.deserialize(getPrefix() +
+                    configManager.getConfig().messages.totpCodeInvalid.replace("{attempts}", String.valueOf(Math.max(0, remaining)))));
             return;
         }
 

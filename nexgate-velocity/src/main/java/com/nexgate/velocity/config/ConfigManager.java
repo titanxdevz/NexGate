@@ -255,27 +255,29 @@ public class ConfigManager {
 
     public static class Messages {
         public String prefix = "<gold><bold>NEXGATE</bold></gold> <white>→</white> ";
-        public String registerPrompt = "<white>Please, register using <gold>/register \\<password> \\<repeat password></gold></white>";
-        public String loginPrompt = "<white>Please use <gold>/login \\<password></gold>, you have {attempts} attempts.</white>";
+        public String registerPrompt = "<white>Please, register using <gold><click:suggest_command:'/register '>/register \\<password> \\<repeat password></click></gold></white>";
+        public String loginPrompt = "<white>Please use <gold><click:suggest_command:'/login '>/login \\<password></click></gold>, you have <gold><bold>{attempts}</bold></gold> attempts.</white>";
         public String alreadyLoggedIn = "<yellow>You are already logged in!</yellow>";
         public String registerSuccess = "<green>Registration successful! Welcome to the server.</green>";
         public String loginSuccess = "<green>Login successful! Welcome back.</green>";
         public String sessionRestored = "<green>Welcome back, <aqua>{player}</aqua>! Session restored.</green>";
         public String premiumAutoLogin = "<gold><bold>Mojang Premium verified!</bold></gold> <gray>Logged in securely via official session server.</gray>";
-        public String wrongPassword = "<red>Incorrect password! Attempts remaining: {attempts}</red>";
+        public String wrongPassword = "<red>Incorrect password! Attempts remaining: <yellow><bold>{attempts}</bold></yellow></red>";
         public String accountLocked = "<red>Too many failed attempts! Account locked for {seconds}s.</red>";
-        public String ipRateLimited = "<red>Too many connection attempts from this IP. Please wait.</red>";
-        public String maxAccountsReached = "<red>Maximum registered accounts reached for your IP address ({max}).</red>";
+        public String maxFailedAttemptsKick = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Too many incorrect login attempts!</red>\n<gray>You have been disconnected to protect account security.</gray>\n<gray>Please reconnect and verify your password.</gray>";
+        public String ipRateLimited = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Connection Rate Limited</red>\n<gray>Too many join attempts from your IP address. Please wait a moment.</gray>";
+        public String maxAccountsReached = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Account Limit Reached</red>\n<gray>Maximum registered accounts reached for your IP address ({max}).</gray>";
         public String passwordMismatch = "<red>Passwords do not match!</red>";
         public String passwordTooWeak = "<red>Password rejected: {reason}</red>";
-        public String authTimeout = "<red>Authentication timed out. Please rejoin.</red>";
-        public String authModeOnlineOnly = "<red>This server requires an official verified Minecraft Java Edition account.</red>";
-        public String premiumImpersonationKick = "<red>This username belongs to a verified Premium account and cannot be accessed via offline mode.</red>";
-        public String mojangUnavailable = "<red>Mojang authentication servers are currently unreachable. Please try again shortly.</red>";
+        public String authTimeout = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Authentication timed out!</red>\n<gray>You took too long to authenticate.</gray>\n<gray>Please reconnect and log in with <gold>/login \\<password></gold></gray>";
+        public String authModeOnlineOnly = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Official Account Required</red>\n<gray>This server requires a verified Minecraft Java Edition account.</gray>";
+        public String premiumImpersonationKick = "<gold><bold>NEXGATE SECURITY</bold></gold>\n\n<red>Premium Account Protection</red>\n<gray>This username belongs to a verified official Minecraft account.</gray>\n<gray>Please launch Minecraft using your official paid launcher.</gray>";
+        public String mojangUnavailable = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Mojang Service Unreachable</red>\n<gray>Official session servers are currently unreachable.</gray>\n<gray>Please try reconnecting in a few moments.</gray>";
         public String pendingPremiumPrompt = "<yellow>Pending Premium verification! Please join using your official paid Minecraft launcher.</yellow>";
         public String totpPrompt = "<yellow>Two-factor authentication required. Use <gold><bold>/2fa verify \\<code></bold></gold></yellow>";
         public String totpRequiredAction = "<red>You must enter your 2FA code before continuing! Use /2fa verify \\<code></red>";
-        public String totpCodeInvalid = "<red>Invalid two-factor authentication code! Attempts remaining: {attempts}</red>";
+        public String totpCodeInvalid = "<red>Invalid two-factor authentication code! Attempts remaining: <yellow><bold>{attempts}</bold></yellow></red>";
         public String totpLocked = "<red>Too many invalid 2FA attempts! Account locked for {seconds}s.</red>";
+        public String totpFailedAttemptsKick = "<gold><bold>NEXGATE NETWORK</bold></gold>\n\n<red>Too many invalid 2FA attempts!</red>\n<gray>You have been disconnected to protect account security.</gray>";
     }
 }

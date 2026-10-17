@@ -440,6 +440,8 @@ public class ConnectionListener {
 
         authService.getAntiBotManager().onPlayerDisconnected(ip);
         authManager.logout(player);
+        authService.getAccountRateLimiter().reset(player.getUsername().toLowerCase());
+        authService.getTotpRateLimiter().reset(player.getUsername().toLowerCase());
     }
 }
 
